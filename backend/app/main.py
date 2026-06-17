@@ -17,8 +17,7 @@ from app.db.session import engine, Base
 log = structlog.get_logger(__name__)
 
 # Symbols to stream on startup
-DEFAULT_STREAM_SYMBOLS = ["BTCUSDT", "ETHUSDT", "LTCUSDT", "SOLUSDT"]
-
+DEFAULT_STREAM_SYMBOLS = []
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
