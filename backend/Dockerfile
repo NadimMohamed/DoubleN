@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies into a prefix
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
@@ -32,8 +32,7 @@ COPY --from=builder /install /usr/local
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
 # Copy application source
-COPY --chown=appuser:appgroup . .
-
+COPY --chown=appuser:appgroup backend/ .
 USER appuser
 
 EXPOSE 8000
