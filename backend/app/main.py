@@ -89,3 +89,7 @@ async def health():
 @app.get("/", include_in_schema=False)
 async def root():
     return {"message": "Double N Trading API", "docs": "/api/docs"}
+
+@app.get("/cors-test")
+async def cors_test():
+    return {"cors": "new_version"}
