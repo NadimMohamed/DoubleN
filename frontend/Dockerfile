@@ -6,7 +6,7 @@ WORKDIR /app
 RUN apk add --no-cache libc6-compat
 
 COPY package.json package-lock.json* ./
-RUN npm ci --frozen-lockfile
+RUN npm install
 
 # ── Stage 2: builder ──────────────────────────────────────────────────────────
 FROM node:22-alpine AS builder
