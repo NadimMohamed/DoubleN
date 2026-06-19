@@ -81,7 +81,7 @@ async def health():
     return {
         "status": "ok",
         "binance": "connected" if binance_ok else "unavailable",
-        "version": "1.0.0",
+        "version": "999.999.999",
         "env": settings.APP_ENV,
     }
 
