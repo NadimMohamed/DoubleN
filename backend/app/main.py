@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 app = FastAPI(
     title="Double N Trading API",
     description="Real-time trading data API with Binance integration",
-    version="1.0.0",
+    "version": "999.999.999",
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
