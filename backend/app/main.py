@@ -17,8 +17,10 @@ from app.db.session import engine, Base
 
 log = structlog.get_logger(__name__)
 
-# Symbols to stream on startup
-DEFAULT_STREAM_SYMBOLS = []
+# Symbols to stream on startup — must include the symbols shown on the
+# dashboard so the /ws/ticker/{symbol} clients actually receive live
+# price broadcasts instead of connecting to an idle stream.
+DEFAULT_STREAM_SYMBOLS = ["BTCUSDT", "ETHUSDT", "LTCUSDT", "SOLUSDT"]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:

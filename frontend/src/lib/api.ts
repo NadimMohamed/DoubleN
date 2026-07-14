@@ -20,10 +20,19 @@ export const tokenStorage = {
   set: (access: string, refresh: string) => {
     localStorage.setItem(TOKEN_KEY, access)
     localStorage.setItem(REFRESH_KEY, refresh)
+    // Also persist the access token as a cookie so the Next.js middleware
+    // (which runs on the server and has no access to localStorage) can
+    // verify the session before rendering protected routes like /dashboard.
+    if (typeof document !== 'undefined') {
+      document.cookie = `${TOKEN_KEY}=${access}; path=/; max-age=86400; SameSite=Lax`
+    }
   },
   clear: () => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(REFRESH_KEY)
+    if (typeof document !== 'undefined') {
+      document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`
+    }
   },
 }
 
