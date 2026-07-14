@@ -15,6 +15,25 @@ export const api = axios.create({
 // ── Token storage ─────────────────────────────────────────────────────────────
 const TOKEN_KEY = 'dnt_access_token'
 const REFRESH_KEY = 'dnt_refresh_token'
+const DEFAULT_COOKIE_MAX_AGE = 86400 // 24h fallback if we can't read the token's exp claim
+
+// Reads the `exp` claim off a JWT (if present) so the cookie's max-age
+// matches the token's actual expiry instead of an arbitrary constant.
+function getTokenMaxAge(token: string): number {
+  try {
+    const [, payloadSegment] = token.split('.')
+    if (!payloadSegment) return DEFAULT_COOKIE_MAX_AGE
+
+    const payload = JSON.parse(atob(payloadSegment.replace(/-/g, '+').replace(/_/g, '/')))
+    if (typeof payload?.exp === 'number') {
+      const secondsRemaining = Math.floor(payload.exp - Date.now() / 1000)
+      return secondsRemaining > 0 ? secondsRemaining : 0
+    }
+    return DEFAULT_COOKIE_MAX_AGE
+  } catch {
+    return DEFAULT_COOKIE_MAX_AGE
+  }
+}
 
 function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null
@@ -42,8 +61,10 @@ export const tokenStorage = {
     // (which runs on the server and has no access to localStorage) can
     // verify the session before rendering protected routes like /dashboard.
     if (typeof document !== 'undefined') {
-      document.cookie = `${TOKEN_KEY}=${access}; path=/; max-age=86400; SameSite=Lax`
-      document.cookie = `${REFRESH_KEY}=${refresh}; path=/; max-age=2592000; SameSite=Lax`
+      const maxAge = getTokenMaxAge(access)
+      const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
+      document.cookie = `${TOKEN_KEY}=${access}; path=/; max-age=${maxAge}; SameSite=Lax${secure}`
+      document.cookie = `${REFRESH_KEY}=${refresh}; path=/; max-age=2592000; SameSite=Lax${secure}`
     }
   },
   clear: () => {
@@ -51,8 +72,9 @@ export const tokenStorage = {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(REFRESH_KEY)
     if (typeof document !== 'undefined') {
-      document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`
-      document.cookie = `${REFRESH_KEY}=; path=/; max-age=0; SameSite=Lax`
+      const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
+      document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax${secure}`
+      document.cookie = `${REFRESH_KEY}=; path=/; max-age=0; SameSite=Lax${secure}`
     }
   },
 }
