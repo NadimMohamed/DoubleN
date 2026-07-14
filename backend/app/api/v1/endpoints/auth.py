@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 import structlog
 
 from app.db.session import get_db
@@ -14,7 +14,6 @@ from app.core.security import (
     create_access_token, create_refresh_token,
     decode_token,
 )
-from app.core.config import settings
 from app.core.exceptions import AuthenticationError, ConflictError
 from app.api.v1.deps import get_current_user
 from app.models.user import User
@@ -58,14 +57,18 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
         log.warning("auth.login.failed", email=data.email, reason="invalid_credentials")
         raise AuthenticationError("Incorrect email or password")
 
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id)
-    log.info("auth.login.success", user_id=str(user.id))
+    access_token, access_expires_at = create_access_token(user.id)
+    refresh_token, refresh_expires_at = create_refresh_token(user.id)
+    now = int(datetime.now(timezone.utc).timestamp())
+    expires_in = access_expires_at - now
+
+    log.info("auth.login.success", user_id=str(user.id), expires_in=expires_in)
 
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        expires_in=expires_in,
+        expires_at=access_expires_at,
     )
 
 
@@ -97,11 +100,18 @@ async def refresh_token(data: RefreshRequest, db: AsyncSession = Depends(get_db)
         log.warning("auth.refresh.user_not_found_or_inactive", user_id=str(user_id))
         raise AuthenticationError("User not found")
 
-    log.info("auth.refresh.success", user_id=str(user.id))
+    access_token, access_expires_at = create_access_token(user.id)
+    refresh_token, refresh_expires_at = create_refresh_token(user.id)
+    now = int(datetime.now(timezone.utc).timestamp())
+    expires_in = access_expires_at - now
+
+    log.info("auth.refresh.success", user_id=str(user.id), expires_in=expires_in)
+
     return TokenResponse(
-        access_token=create_access_token(user.id),
-        refresh_token=create_refresh_token(user.id),
-        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=expires_in,
+        expires_at=access_expires_at,
     )
 
 

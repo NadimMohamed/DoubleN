@@ -15,6 +15,7 @@ export const api = axios.create({
 // ── Token storage ─────────────────────────────────────────────────────────────
 const TOKEN_KEY = 'dnt_access_token'
 const REFRESH_KEY = 'dnt_refresh_token'
+const EXPIRES_AT_KEY = 'dnt_token_expires_at'
 const DEFAULT_COOKIE_MAX_AGE = 86400 // 24h fallback if we can't read the token's exp claim
 
 // Reads the `exp` claim off a JWT (if present) so the cookie's max-age
@@ -53,10 +54,21 @@ export const tokenStorage = {
     if (typeof window === 'undefined') return null
     return getCookie(REFRESH_KEY) || localStorage.getItem(REFRESH_KEY)
   },
-  set: (access: string, refresh: string) => {
+  // Unix timestamp (seconds) at which the current access token expires, if known.
+  getExpiresAt: (): number | null => {
+    if (typeof window === 'undefined') return null
+    const raw = localStorage.getItem(EXPIRES_AT_KEY)
+    if (!raw) return null
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) ? parsed : null
+  },
+  set: (access: string, refresh: string, expiresAt?: number) => {
     if (typeof window === 'undefined') return
     localStorage.setItem(TOKEN_KEY, access)
     localStorage.setItem(REFRESH_KEY, refresh)
+    if (typeof expiresAt === 'number') {
+      localStorage.setItem(EXPIRES_AT_KEY, String(expiresAt))
+    }
     // Also persist tokens as cookies so the Next.js middleware
     // (which runs on the server and has no access to localStorage) can
     // verify the session before rendering protected routes like /dashboard.
@@ -71,6 +83,7 @@ export const tokenStorage = {
     if (typeof window === 'undefined') return
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(REFRESH_KEY)
+    localStorage.removeItem(EXPIRES_AT_KEY)
     if (typeof document !== 'undefined') {
       const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
       document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax${secure}`
@@ -128,7 +141,7 @@ api.interceptors.response.use(
         const { data } = await axios.post<TokenResponse>(`${API_URL}/api/v1/auth/refresh`, {
           refresh_token: refreshToken,
         })
-        tokenStorage.set(data.access_token, data.refresh_token)
+        tokenStorage.set(data.access_token, data.refresh_token, data.expires_at)
         processQueue(null, data.access_token)
         original.headers.Authorization = `Bearer ${data.access_token}`
         return api(original)
