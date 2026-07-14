@@ -1,4 +1,5 @@
 import asyncio
+import time
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -59,13 +60,45 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    import traceback
+    error_str = traceback.format_exc()
+    log.error("api.error", path=request.url.path, method=request.method, error=error_str)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "type": str(type(exc).__name__)},
+    )
+
+
 # ── Middleware ─────────────────────────────────────────────────────────────────
+@app.middleware("http")
+async def log_requests(request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    log.info(
+        "http.request",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        duration_ms=round(process_time * 1000),
+    )
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,  # Uses ALLOWED_ORIGINS from config
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=False,  # Required when allow_origins=["*"]
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["*"],  # Allow all hosts
 )
 
 # ── Routers ────────────────────────────────────────────────────────────────────
@@ -88,7 +121,12 @@ async def health():
 
 @app.get("/", include_in_schema=False)
 async def root():
-    return {"message": "Double N Trading API", "docs": "/api/docs"}
+    return {
+        "message": "DoubleN Trading API",
+        "docs": "/api/docs",
+        "health": "/health",
+        "version": "999.999.999",
+    }
 
 @app.get("/cors-test")
 async def cors_test():
