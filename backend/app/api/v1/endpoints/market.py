@@ -31,8 +31,13 @@ async def get_ticker(symbol: str = Path(..., description="e.g. BTCUSDT")):
     try:
         return await binance_client.get_ticker_24h(symbol)
     except Exception as e:
-        log.error("market.ticker.error", symbol=symbol, error=str(e))
-        raise HTTPException(status_code=503, detail="Binance API unavailable")
+        log.warning(
+            "market.ticker.fallback_to_mock",
+            symbol=symbol,
+            error=str(e),
+            msg="Binance API unavailable, falling back to mock ticker data",
+        )
+        return binance_client.get_mock_ticker(symbol)
 
 
 @router.get(
@@ -52,8 +57,13 @@ async def get_tickers(
     try:
         return await binance_client.get_multiple_tickers(syms)
     except Exception as e:
-        log.error("market.tickers.error", error=str(e))
-        raise HTTPException(status_code=503, detail="Binance API unavailable")
+        log.warning(
+            "market.tickers.fallback_to_mock",
+            symbols=syms,
+            error=str(e),
+            msg="Binance API unavailable, falling back to mock ticker data",
+        )
+        return binance_client.get_mock_tickers(syms)
 
 
 @router.get(
@@ -72,8 +82,13 @@ async def get_klines(
     try:
         return await binance_client.get_klines(symbol, interval, limit)
     except Exception as e:
-        log.error("market.klines.error", symbol=symbol, error=str(e))
-        raise HTTPException(status_code=503, detail="Binance API unavailable")
+        log.warning(
+            "market.klines.fallback_to_mock",
+            symbol=symbol,
+            error=str(e),
+            msg="Binance API unavailable, falling back to mock kline data",
+        )
+        return binance_client.get_mock_klines(symbol, interval, limit)
 
 
 @router.get(
@@ -89,8 +104,13 @@ async def get_order_book(
     try:
         return await binance_client.get_order_book(symbol, limit)
     except Exception as e:
-        log.error("market.orderbook.error", symbol=symbol, error=str(e))
-        raise HTTPException(status_code=503, detail="Binance API unavailable")
+        log.warning(
+            "market.orderbook.fallback_to_mock",
+            symbol=symbol,
+            error=str(e),
+            msg="Binance API unavailable, falling back to mock order book data",
+        )
+        return binance_client.get_mock_order_book(symbol, limit)
 
 
 @router.get(
