@@ -18,6 +18,13 @@ from app.schemas.market import TickerPrice, KlineData, OrderBook, OrderBookEntry
 
 log = structlog.get_logger(__name__)
 
+# How long a REST ticker response is considered "fresh" before we refetch.
+# Binance's WebSocket streams are frequently unreachable from the hosting
+# environment (HTTP 451 — geo-blocked), so the app relies on REST polling
+# for live prices. A short TTL cache keeps redundant requests down while
+# still giving near-real-time updates (2-5s) to dashboard/watchlist polling.
+TICKER_CACHE_TTL_SECONDS = 2
+
 BINANCE_BASE = settings.BINANCE_BASE_URL
 
 # Realistic base prices used to seed mock data when Binance is unavailable.
@@ -46,10 +53,19 @@ MOCK_PRICE_RANGES: dict[str, tuple[float, float]] = {
 
 
 class BinanceClient:
-    """Async HTTP client for Binance public market data endpoints."""
+    """Async HTTP client for Binance public market data endpoints.
+
+    Binance's WebSocket streams are frequently unreachable from Railway's
+    hosting IPs (HTTP 451 — geo-blocked), so real-time prices are delivered
+    via REST polling instead. A short-lived in-memory cache keeps the poll
+    rate down without adding noticeable latency (2s TTL, 2-5s effective
+    freshness once client polling interval is factored in).
+    """
 
     def __init__(self):
         self._client: Optional[httpx.AsyncClient] = None
+        self._ticker_cache: dict[str, TickerPrice] = {}
+        self._ticker_cache_time: dict[str, datetime] = {}
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -79,23 +95,53 @@ class BinanceClient:
         """
         GET /api/v3/ticker/24hr
         Returns 24h rolling window price statistics for a symbol.
+
+        Real-time prices are delivered via REST polling (the Binance
+        WebSocket stream is frequently geo-blocked from the hosting
+        environment). Responses are cached for `TICKER_CACHE_TTL_SECONDS`
+        so frequent polling (e.g. every 2s from the dashboard/watchlist)
+        doesn't hammer the upstream API. If the upstream request fails and
+        a stale cached value exists, it is returned instead of raising —
+        callers only see an exception when there is truly no data at all.
         """
-        client = await self._get_client()
-        r = await client.get("/api/v3/ticker/24hr", params={"symbol": symbol.upper()})
-        r.raise_for_status()
-        d = r.json()
-        return TickerPrice(
-            symbol=d["symbol"],
-            price=float(d["lastPrice"]),
-            price_change=float(d["priceChange"]),
-            price_change_pct=float(d["priceChangePercent"]),
-            high_24h=float(d["highPrice"]),
-            low_24h=float(d["lowPrice"]),
-            volume=float(d["volume"]),
-            quote_volume=float(d["quoteVolume"]),
-            open_price=float(d["openPrice"]),
-            last_updated=datetime.now(timezone.utc),
-        )
+        symbol = symbol.upper()
+
+        cached_at = self._ticker_cache_time.get(symbol)
+        if cached_at is not None:
+            age = (datetime.now(timezone.utc) - cached_at).total_seconds()
+            if age < TICKER_CACHE_TTL_SECONDS:
+                return self._ticker_cache[symbol]
+
+        try:
+            client = await self._get_client()
+            r = await client.get("/api/v3/ticker/24hr", params={"symbol": symbol})
+            r.raise_for_status()
+            d = r.json()
+            ticker = TickerPrice(
+                symbol=d["symbol"],
+                price=float(d["lastPrice"]),
+                price_change=float(d["priceChange"]),
+                price_change_pct=float(d["priceChangePercent"]),
+                high_24h=float(d["highPrice"]),
+                low_24h=float(d["lowPrice"]),
+                volume=float(d["volume"]),
+                quote_volume=float(d["quoteVolume"]),
+                open_price=float(d["openPrice"]),
+                last_updated=datetime.now(timezone.utc),
+            )
+            self._ticker_cache[symbol] = ticker
+            self._ticker_cache_time[symbol] = datetime.now(timezone.utc)
+            return ticker
+        except Exception as e:
+            stale = self._ticker_cache.get(symbol)
+            if stale is not None:
+                log.warning(
+                    "binance.get_ticker_24h.stale_cache_fallback",
+                    symbol=symbol,
+                    error=str(e),
+                )
+                return stale
+            raise
 
     async def get_multiple_tickers(self, symbols: list[str]) -> list[TickerPrice]:
         """
