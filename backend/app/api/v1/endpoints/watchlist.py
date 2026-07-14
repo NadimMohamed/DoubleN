@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Path
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 import uuid
 
 from app.db.session import get_db
@@ -7,13 +8,25 @@ from app.api.v1.deps import get_current_user
 from app.models.user import User
 from app.services.watchlist import WatchlistService
 from app.services.binance import binance_client
-from app.schemas.market import WatchlistAdd, WatchlistItemResponse, WatchlistWithPrice
+from app.schemas.market import WatchlistAdd, WatchlistItemResponse, WatchlistWithPrice, SUPPORTED_SYMBOLS
+from app.core.exceptions import InvalidSymbolError, ValidationError, ConflictError, ResourceNotFoundError
 import structlog
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 
 MAX_WATCHLIST_ITEMS = 20
+
+
+def _validate_symbol(symbol: str) -> str:
+    """Validate a symbol against the supported set before any database
+    operation is attempted, so bad input never reaches the DB layer."""
+    if not symbol or not symbol.strip():
+        raise ValidationError("Symbol must not be empty")
+    s = symbol.strip().upper()
+    if s not in SUPPORTED_SYMBOLS:
+        raise InvalidSymbolError(s, SUPPORTED_SYMBOLS)
+    return s
 
 
 @router.get(
@@ -25,7 +38,12 @@ async def get_watchlist(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    items = await WatchlistService.get_user_watchlist(db, current_user.id)
+    try:
+        items = await WatchlistService.get_user_watchlist(db, current_user.id)
+    except SQLAlchemyError as e:
+        log.error("watchlist.fetch_failed", user_id=str(current_user.id), error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to load watchlist") from e
+
     if not items:
         return []
 
@@ -35,7 +53,12 @@ async def get_watchlist(
         tickers = await binance_client.get_multiple_tickers(symbols)
         ticker_map = {t.symbol: t for t in tickers}
     except Exception as e:
-        log.warning("watchlist.price_fetch_failed", error=str(e))
+        log.warning(
+            "watchlist.price_fetch_failed",
+            user_id=str(current_user.id),
+            symbols=symbols,
+            error=str(e),
+        )
         ticker_map = {}
 
     result = []
@@ -69,7 +92,17 @@ async def add_to_watchlist(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    count = await WatchlistService.count_items(db, current_user.id)
+    # Symbol is already validated by the WatchlistAdd schema, but we
+    # re-validate here so a bad symbol never reaches the database layer
+    # even if the schema validation is bypassed or loosened in the future.
+    symbol = _validate_symbol(data.symbol)
+
+    try:
+        count = await WatchlistService.count_items(db, current_user.id)
+    except SQLAlchemyError as e:
+        log.error("watchlist.count_failed", user_id=str(current_user.id), error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to check watchlist size") from e
+
     if count >= MAX_WATCHLIST_ITEMS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -77,9 +110,17 @@ async def add_to_watchlist(
         )
 
     try:
-        item = await WatchlistService.add_symbol(db, current_user.id, data.symbol)
+        item = await WatchlistService.add_symbol(db, current_user.id, symbol)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        raise ConflictError(str(e))
+    except SQLAlchemyError as e:
+        log.error(
+            "watchlist.add_failed",
+            user_id=str(current_user.id),
+            symbol=symbol,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to add symbol to watchlist") from e
 
     return item
 
@@ -94,6 +135,16 @@ async def remove_from_watchlist(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    removed = await WatchlistService.remove_symbol(db, current_user.id, item_id)
+    try:
+        removed = await WatchlistService.remove_symbol(db, current_user.id, item_id)
+    except SQLAlchemyError as e:
+        log.error(
+            "watchlist.remove_failed",
+            user_id=str(current_user.id),
+            item_id=str(item_id),
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to remove item from watchlist") from e
+
     if not removed:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        raise ResourceNotFoundError("Watchlist item not found")
