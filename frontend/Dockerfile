@@ -16,9 +16,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build-time env vars (public, safe to bake in)
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
-ARG NEXT_PUBLIC_WS_URL=ws://localhost:8000
+# Build-time env vars (public, safe to bake in).
+# Defaults point at the production backend so the app still works if these
+# aren't overridden as Railway build args.
+ARG NEXT_PUBLIC_API_URL=https://doublen-production.up.railway.app
+ARG NEXT_PUBLIC_WS_URL=wss://doublen-production.up.railway.app
 ARG NEXT_PUBLIC_APP_NAME="Double N Trading"
 
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL

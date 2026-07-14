@@ -60,13 +60,30 @@ export const useAuthStore = create<AuthState>()(
 
       fetchMe: async () => {
         const token = tokenStorage.getAccess()
-        if (!token) return
+        if (!token) {
+          set({ user: null, isAuthenticated: false })
+          return
+        }
         try {
           const user = await authApi.me()
           set({ user, isAuthenticated: true })
         } catch {
-          tokenStorage.clear()
-          set({ user: null, isAuthenticated: false })
+          // Access token may have expired — try to refresh before giving up.
+          const refreshToken = tokenStorage.getRefresh()
+          if (refreshToken) {
+            try {
+              const newTokens = await authApi.refresh(refreshToken)
+              tokenStorage.set(newTokens.access_token, newTokens.refresh_token)
+              const user = await authApi.me()
+              set({ user, isAuthenticated: true })
+            } catch {
+              tokenStorage.clear()
+              set({ user: null, isAuthenticated: false })
+            }
+          } else {
+            tokenStorage.clear()
+            set({ user: null, isAuthenticated: false })
+          }
         }
       },
 

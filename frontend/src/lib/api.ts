@@ -1,7 +1,9 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import type { TokenResponse, LoginRequest, RegisterRequest, User, TickerPrice, KlineData, OrderBook, WatchlistItem } from '@/types'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// Falls back to the production backend URL (matching next.config.js) so the
+// app still works if NEXT_PUBLIC_API_URL isn't set at build time in Railway.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://doublen-production.up.railway.app'
 
 // ── Axios instance ────────────────────────────────────────────────────────────
 export const api = axios.create({
@@ -14,24 +16,43 @@ export const api = axios.create({
 const TOKEN_KEY = 'dnt_access_token'
 const REFRESH_KEY = 'dnt_refresh_token'
 
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null
+  const match = document.cookie.split(';').find((c) => c.trim().startsWith(`${name}=`))
+  if (!match) return null
+  const value = match.split('=')[1]?.trim()
+  return value || null
+}
+
 export const tokenStorage = {
-  getAccess: () => (typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null),
-  getRefresh: () => (typeof window !== 'undefined' ? localStorage.getItem(REFRESH_KEY) : null),
+  getAccess: () => {
+    if (typeof window === 'undefined') return null
+    // Try cookie first (server/middleware relies on it), fall back to localStorage.
+    return getCookie(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY)
+  },
+  getRefresh: () => {
+    if (typeof window === 'undefined') return null
+    return getCookie(REFRESH_KEY) || localStorage.getItem(REFRESH_KEY)
+  },
   set: (access: string, refresh: string) => {
+    if (typeof window === 'undefined') return
     localStorage.setItem(TOKEN_KEY, access)
     localStorage.setItem(REFRESH_KEY, refresh)
-    // Also persist the access token as a cookie so the Next.js middleware
+    // Also persist tokens as cookies so the Next.js middleware
     // (which runs on the server and has no access to localStorage) can
     // verify the session before rendering protected routes like /dashboard.
     if (typeof document !== 'undefined') {
       document.cookie = `${TOKEN_KEY}=${access}; path=/; max-age=86400; SameSite=Lax`
+      document.cookie = `${REFRESH_KEY}=${refresh}; path=/; max-age=2592000; SameSite=Lax`
     }
   },
   clear: () => {
+    if (typeof window === 'undefined') return
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(REFRESH_KEY)
     if (typeof document !== 'undefined') {
       document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`
+      document.cookie = `${REFRESH_KEY}=; path=/; max-age=0; SameSite=Lax`
     }
   },
 }

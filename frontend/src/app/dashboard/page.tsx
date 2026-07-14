@@ -93,7 +93,16 @@ export default function DashboardPage() {
               </div>
             ) : error ? (
               <div className="card p-4 text-center text-danger text-sm">
-                Failed to load market data. Check that the backend is running.
+                <p className="font-semibold mb-2">Failed to load market data</p>
+                <p className="text-xs text-slate mb-3">
+                  {error instanceof Error ? error.message : 'Check your connection or try refreshing'}
+                </p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="btn-primary text-xs px-3 py-1.5"
+                >
+                  Retry
+                </button>
               </div>
             ) : (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
