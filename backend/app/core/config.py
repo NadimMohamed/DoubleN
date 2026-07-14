@@ -7,7 +7,7 @@ import secrets
 class Settings(BaseSettings):
     # ── Application ──────────────────────────────────────────────────────────
     APP_NAME: str = "Double N Trading"
-    APP_ENV: str = "development"
+    APP_ENV: str = "production"
     DEBUG: bool = False
     SECRET_KEY: str = secrets.token_urlsafe(64)
     ALGORITHM: str = "HS256"
