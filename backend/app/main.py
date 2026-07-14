@@ -63,7 +63,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://dn-frontend-production-43b8.up.railway.app",
+        "https://dn-frontend-production-43b8.up.railway.app/",
     ],
     allow_credentials=True,
     allow_methods=["*"],
