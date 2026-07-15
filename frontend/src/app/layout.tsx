@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import './globals.css'
 import { Providers } from './providers'
 import AuthWrapper from './auth-wrapper'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export const metadata = {
   title: { default: 'Double N Trading', template: '%s | Double N Trading' },
@@ -18,9 +19,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
       <body className="bg-navy text-white antialiased font-inter">
-        <Providers>
-          <AuthWrapper>{children}</AuthWrapper>
-        </Providers>
+        <ErrorBoundary>
+          <Providers>
+            <AuthWrapper>{children}</AuthWrapper>
+          </Providers>
+        </ErrorBoundary>
       </body>
     </html>
   )
