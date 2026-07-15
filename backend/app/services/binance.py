@@ -100,9 +100,13 @@ class BinanceClient:
         WebSocket stream is frequently geo-blocked from the hosting
         environment). Responses are cached for `TICKER_CACHE_TTL_SECONDS`
         so frequent polling (e.g. every 2s from the dashboard/watchlist)
-        doesn't hammer the upstream API. If the upstream request fails and
-        a stale cached value exists, it is returned instead of raising —
-        callers only see an exception when there is truly no data at all.
+        doesn't hammer the upstream API.
+
+        Fallback chain when Binance is unreachable (e.g. HTTP 451 from the
+        hosting environment's IPs): CoinGecko (real data, alternative
+        source) → stale cache → fully simulated mock data. The returned
+        `data_source` field always reflects where the data actually came
+        from so API consumers and the UI can be transparent about it.
         """
         symbol = symbol.upper()
 
@@ -128,11 +132,29 @@ class BinanceClient:
                 quote_volume=float(d["quoteVolume"]),
                 open_price=float(d["openPrice"]),
                 last_updated=datetime.now(timezone.utc),
+                data_source="binance",
             )
             self._ticker_cache[symbol] = ticker
             self._ticker_cache_time[symbol] = datetime.now(timezone.utc)
             return ticker
         except Exception as e:
+            log.warning("binance.ticker_failed_trying_coingecko", symbol=symbol, error=str(e))
+
+            if settings.USE_COINGECKO_FALLBACK:
+                try:
+                    from app.services.coingecko import coingecko_client
+                    ticker = await coingecko_client.get_ticker_24h(symbol)
+                    log.info("binance.coingecko_fallback", symbol=symbol)
+                    self._ticker_cache[symbol] = ticker
+                    self._ticker_cache_time[symbol] = datetime.now(timezone.utc)
+                    return ticker
+                except Exception as cg_error:
+                    log.warning(
+                        "coingecko.also_failed_using_stale_or_mock",
+                        symbol=symbol,
+                        error=str(cg_error),
+                    )
+
             stale = self._ticker_cache.get(symbol)
             if stale is not None:
                 log.warning(
@@ -141,7 +163,8 @@ class BinanceClient:
                     error=str(e),
                 )
                 return stale
-            raise
+
+            return self.get_mock_ticker(symbol)
 
     async def get_multiple_tickers(self, symbols: list[str]) -> list[TickerPrice]:
         """
@@ -173,6 +196,7 @@ class BinanceClient:
                 quote_volume=float(d["quoteVolume"]),
                 open_price=float(d["openPrice"]),
                 last_updated=datetime.now(timezone.utc),
+                data_source="binance",
             ))
         return results
 
@@ -278,6 +302,7 @@ class BinanceClient:
             quote_volume=round(quote_volume, 4),
             open_price=round(open_price, 8),
             last_updated=datetime.now(timezone.utc),
+            data_source="mock",
         )
 
     def get_mock_tickers(self, symbols: list[str]) -> list[TickerPrice]:

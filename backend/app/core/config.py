@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     BINANCE_BASE_URL: str = "https://api.binance.com"
     BINANCE_WS_URL: str = "wss://stream.binance.com:9443"
 
+    # ── Data Sources ─────────────────────────────────────────────────────────
+    # Binance's REST/WebSocket endpoints are frequently unreachable from
+    # Railway's hosting IPs (HTTP 451 — geo-blocked). When enabled, ticker
+    # requests fall back to CoinGecko's free public API (real data, no auth
+    # required, 10-50 calls/minute — sufficient for polling dashboards) before
+    # finally falling back to simulated mock data.
+    # Priority order: binance > coingecko > mock
+    USE_COINGECKO_FALLBACK: bool = True
+    COINGECKO_API_TIMEOUT: int = 10
+
     # ── Rate limiting ────────────────────────────────────────────────────────
     RATE_LIMIT_PER_MINUTE: int = 60
 

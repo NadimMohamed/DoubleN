@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, field_validator
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 import uuid
 
@@ -62,6 +62,30 @@ class TickerPrice(BaseModel):
     quote_volume: float
     open_price: float
     last_updated: datetime
+
+    # Tracks where this data actually came from so API consumers and the UI
+    # can be transparent about it — Binance is frequently geo-blocked (HTTP
+    # 451) from Railway's hosting IPs, so responses may fall back to
+    # CoinGecko (real data, alternative source) or fully simulated mock data.
+    data_source: Literal["binance", "coingecko", "mock"] = "binance"
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "symbol": "BTCUSDT",
+                "price": 45000.0,
+                "price_change": 500.0,
+                "price_change_pct": 1.12,
+                "high_24h": 45800.0,
+                "low_24h": 44200.0,
+                "volume": 12345.6789,
+                "quote_volume": 555555555.55,
+                "open_price": 44500.0,
+                "last_updated": "2024-01-01T00:00:00Z",
+                "data_source": "binance",
+            }
+        }
+    )
 
 
 class OrderBookEntry(BaseModel):

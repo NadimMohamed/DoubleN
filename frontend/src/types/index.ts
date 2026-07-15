@@ -41,6 +41,10 @@ export interface TickerPrice {
   quote_volume: number
   open_price: number
   last_updated: string
+  // Where this data actually came from — Binance is frequently geo-blocked
+  // (HTTP 451) from the hosting environment, so responses may fall back to
+  // CoinGecko (real data, alternative source) or fully simulated mock data.
+  data_source?: 'binance' | 'coingecko' | 'mock'
 }
 
 export interface KlineData {

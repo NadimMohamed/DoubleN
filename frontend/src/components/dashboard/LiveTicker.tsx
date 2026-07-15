@@ -10,6 +10,16 @@ interface LiveTickerProps {
   initialPrice?: number | null
   initialChangePct?: number | null
   showDetails?: boolean
+  // Origin of the REST-fetched price data (Binance is frequently
+  // geo-blocked from the hosting environment, so this may reflect a
+  // CoinGecko or fully simulated fallback instead).
+  dataSource?: 'binance' | 'coingecko' | 'mock'
+}
+
+const DATA_SOURCE_LABEL: Record<string, string> = {
+  binance: '🟢 Live',
+  coingecko: '🟡 Alternative',
+  mock: '🔵 Simulated',
 }
 
 function LiveTickerComponent({
@@ -17,6 +27,7 @@ function LiveTickerComponent({
   initialPrice,
   initialChangePct,
   showDetails = false,
+  dataSource,
 }: LiveTickerProps) {
   const { price, high, low, volume, isConnected } = useTickerStream({ symbol })
   const [flash, setFlash] = useState<'up' | 'down' | null>(null)
@@ -46,6 +57,13 @@ function LiveTickerComponent({
             isConnected ? 'bg-emerald animate-pulse' : 'bg-slate'
           )}
         />
+
+        {/* Data source indicator — transparency about origin of the price */}
+        {dataSource && (
+          <span className="text-xs text-slate-400" title={`Data source: ${dataSource}`}>
+            {DATA_SOURCE_LABEL[dataSource] ?? dataSource}
+          </span>
+        )}
 
         {/* Price */}
         <span
