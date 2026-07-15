@@ -34,7 +34,7 @@ def upgrade() -> None:
         'error_alert',
         'info',
         name='notificationtype',
-        create_type=True
+        create_type=False
     )
     notification_type_enum.create(op.get_bind(), checkfirst=True)
 
