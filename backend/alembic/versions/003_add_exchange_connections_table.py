@@ -1,6 +1,6 @@
 """Add exchange_connections table
 
-Revision ID: 003_add_exchange_connections_table
+Revision ID: 003_add_exchanges
 Revises: 002_add_notifications_table
 Create Date: 2026-07-17 00:00:00.000000
 
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
-revision = '003_add_exchange_connections_table'
+revision = '003_add_exchanges'
 down_revision = '002_add_notifications_table'
 branch_labels = None
 depends_on = None
