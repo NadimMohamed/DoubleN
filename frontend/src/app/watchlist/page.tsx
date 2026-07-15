@@ -10,6 +10,7 @@ import { formatPrice, formatPct, formatVolume, SUPPORTED_SYMBOLS, SYMBOL_DISPLAY
 import { cn } from '@/lib/utils'
 import { Plus, Trash2, TrendingUp, TrendingDown, Star, RefreshCw } from 'lucide-react'
 import type { WatchlistItem } from '@/types'
+import { AISignalBadge } from '@/components/watchlist/AISignalBadge'
 
 function AddSymbolModal({ onClose }: { onClose: () => void }) {
   const [selected, setSelected] = useState<string | null>(null)
@@ -81,6 +82,9 @@ function WatchlistRowSkeleton() {
       <div className="w-24 flex justify-end hidden sm:flex">
         <div className="h-3.5 w-12 bg-panel-hover rounded" />
       </div>
+      <div className="w-20 flex justify-end hidden sm:flex">
+        <div className="h-3.5 w-12 bg-panel-hover rounded" />
+      </div>
       <div className="w-28 flex justify-end hidden lg:flex">
         <div className="h-3 w-14 bg-panel-hover rounded" />
       </div>
@@ -140,6 +144,13 @@ function WatchlistRow({ item, onRemove }: { item: WatchlistItem; onRemove: (id: 
             {formatPct(item.price_change_pct_24h)}
           </div>
         ) : <span className="text-slate text-xs">—</span>}
+      </div>
+
+      {/* AI Signal */}
+      <div className="w-20 text-right hidden sm:block">
+        {item.symbol && (
+          <AISignalBadge symbol={item.symbol} />
+        )}
       </div>
 
       {/* 24h High */}
@@ -243,6 +254,7 @@ export default function WatchlistPage() {
                 <div className="flex-1 text-xs font-semibold text-slate uppercase tracking-wider">Symbol</div>
                 <div className="w-32 text-right text-xs font-semibold text-slate uppercase tracking-wider hidden sm:block">Price</div>
                 <div className="w-24 text-right text-xs font-semibold text-slate uppercase tracking-wider hidden sm:block">24h %</div>
+                <div className="w-20 text-right text-xs font-semibold text-slate uppercase tracking-wider hidden sm:block">AI Signal</div>
                 <div className="w-28 text-right text-xs font-semibold text-slate uppercase tracking-wider hidden lg:block">24h High</div>
                 <div className="w-28 text-right text-xs font-semibold text-slate uppercase tracking-wider hidden lg:block">24h Low</div>
                 <div className="w-28 text-right text-xs font-semibold text-slate uppercase tracking-wider hidden xl:block">Volume</div>
