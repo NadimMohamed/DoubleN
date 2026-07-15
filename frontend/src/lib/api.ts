@@ -6,11 +6,32 @@ import type { TokenResponse, LoginRequest, RegisterRequest, User, TickerPrice, K
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://doublen-production.up.railway.app'
 
 // ── Axios instance ────────────────────────────────────────────────────────────
+// Trading analysis can take longer than simple CRUD calls (klines fetch +
+// indicator computation), so the default timeout is generous enough to
+// cover that without making genuinely-hung requests wait forever.
+const DEFAULT_TIMEOUT_MS = 30000
+
 export const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
-  timeout: 15000,
+  timeout: DEFAULT_TIMEOUT_MS,
   headers: { 'Content-Type': 'application/json' },
 })
+
+// ── Retry tuning for transient failures ───────────────────────────────────────
+const RETRYABLE_STATUS_CODES = new Set([502, 503, 504])
+const MAX_RETRIES = 2
+const RETRY_DELAY_MS = 750
+
+function isRetryableError(error: AxiosError): boolean {
+  // Network errors (no response at all) and request timeouts are transient.
+  if (!error.response) return true
+  if (error.code === 'ECONNABORTED') return true
+  return RETRYABLE_STATUS_CODES.has(error.response.status)
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 // ── Token storage ─────────────────────────────────────────────────────────────
 const TOKEN_KEY = 'dnt_access_token'
@@ -116,7 +137,20 @@ const processQueue = (error: unknown, token: string | null = null) => {
 api.interceptors.response.use(
   (r) => r,
   async (error: AxiosError) => {
-    const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _retryCount?: number }
+
+    // Retry transient failures (network errors, timeouts, 502/503/504) with
+    // a short backoff before giving up — a single blip on the Binance
+    // upstream shouldn't surface as "Failed to load analysis" to the user.
+    if (original && isRetryableError(error) && error.response?.status !== 401) {
+      original._retryCount = original._retryCount ?? 0
+      if (original._retryCount < MAX_RETRIES) {
+        original._retryCount += 1
+        await delay(RETRY_DELAY_MS * original._retryCount)
+        return api(original)
+      }
+    }
+
     if (error.response?.status === 401 && !original._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -199,6 +233,27 @@ export const watchlistApi = {
 
   removeSymbol: (itemId: string) =>
     api.delete(`/watchlist/${itemId}`).then((r) => r.data),
+}
+
+// ── Trading API ───────────────────────────────────────────────────────────────
+export const tradingApi = {
+  // Routed through the shared `api` axios instance so it gets the auth
+  // header, the 30s timeout, and the transient-failure retry interceptor —
+  // previously this call used a bare `fetch()` with none of that.
+  getAnalysis: (
+    symbol: string,
+    params: { interval?: string; lookback?: number; account_balance?: number; entry_price?: number } = {},
+  ) =>
+    api
+      .get(`/trading/analysis/${symbol}`, {
+        params: {
+          interval: params.interval ?? '1h',
+          lookback: params.lookback ?? 100,
+          account_balance: params.account_balance ?? 10000,
+          ...(params.entry_price !== undefined ? { entry_price: params.entry_price } : {}),
+        },
+      })
+      .then((r) => r.data),
 }
 
 // ── Error helper ──────────────────────────────────────────────────────────────

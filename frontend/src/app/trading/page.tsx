@@ -4,27 +4,73 @@ import { useQuery } from '@tanstack/react-query'
 import { AuthGuard } from '@/components/auth/AuthGuard'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Topbar } from '@/components/layout/Topbar'
-import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, HelpCircle } from 'lucide-react'
+import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, HelpCircle, RefreshCw } from 'lucide-react'
 import { formatPrice, formatPct } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { tradingApi, getErrorMessage } from '@/lib/api'
 
-// Mock trading data - replace with actual API calls
-async function getTradeAnalysis(symbol: string) {
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/trading/analysis/${symbol}?interval=1h&lookback=100&account_balance=10000`
+function AnalysisSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="card p-6 border-2 border-panel-border">
+        <div className="flex items-start justify-between mb-4">
+          <div className="space-y-2">
+            <div className="h-3 w-24 bg-panel-hover rounded" />
+            <div className="h-8 w-32 bg-panel-hover rounded" />
+          </div>
+          <div className="space-y-2 text-right">
+            <div className="h-3 w-20 bg-panel-hover rounded ml-auto" />
+            <div className="h-7 w-16 bg-panel-hover rounded ml-auto" />
+          </div>
+        </div>
+        <div className="h-4 w-3/4 bg-panel-hover rounded" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="card p-4 space-y-3">
+            <div className="h-3 w-20 bg-panel-hover rounded" />
+            <div className="h-6 w-24 bg-panel-hover rounded" />
+            <div className="h-3 w-16 bg-panel-hover rounded" />
+          </div>
+        ))}
+      </div>
+
+      <div className="card p-6 space-y-4">
+        <div className="h-3 w-32 bg-panel-hover rounded" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-3 w-24 bg-panel-hover rounded" />
+              <div className="h-6 w-28 bg-panel-hover rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
-  if (!response.ok) throw new Error('Failed to fetch analysis')
-  return response.json()
 }
 
 export default function TradingPage() {
   const [selectedSymbol, setSelectedSymbol] = useState('BTCUSDT')
   const [accountBalance, setAccountBalance] = useState(10000)
 
-  const { data: analysis, isLoading, error } = useQuery({
-    queryKey: ['tradeAnalysis', selectedSymbol],
-    queryFn: () => getTradeAnalysis(selectedSymbol),
-    refetchInterval: 30000,
+  const {
+    data: analysis,
+    isLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['tradeAnalysis', selectedSymbol, accountBalance],
+    queryFn: () => tradingApi.getAnalysis(selectedSymbol, { account_balance: accountBalance }),
+    // Analysis is time-sensitive but doesn't need to be re-fetched as
+    // aggressively as a live ticker — 15s keeps signals reasonably fresh
+    // without hammering the endpoint.
+    refetchInterval: 15000,
+    staleTime: 10000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   const getSignalColor = (signal: string) => {
@@ -87,14 +133,24 @@ export default function TradingPage() {
             </div>
 
             {isLoading ? (
-              <div className="card p-8 text-center">
-                <div className="animate-spin h-8 w-8 border-4 border-blue border-t-transparent rounded-full mx-auto mb-4" />
-                <p className="text-slate text-sm">Analyzing {selectedSymbol}...</p>
-              </div>
+              <AnalysisSkeleton />
             ) : error ? (
               <div className="card p-6 border border-danger/30 bg-danger/10">
-                <p className="text-danger font-semibold">Failed to load analysis</p>
-                <p className="text-slate text-sm mt-1">{error instanceof Error ? error.message : 'Try again later'}</p>
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-danger flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-danger font-semibold">Failed to load analysis for {selectedSymbol}</p>
+                    <p className="text-slate text-sm mt-1">{getErrorMessage(error)}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => refetch()}
+                  disabled={isFetching}
+                  className="btn-secondary mt-4 px-4 py-2 text-sm"
+                >
+                  <RefreshCw className={cn('w-3.5 h-3.5', isFetching && 'animate-spin')} />
+                  {isFetching ? 'Retrying…' : 'Retry'}
+                </button>
               </div>
             ) : analysis ? (
               <>
