@@ -58,7 +58,7 @@ def upgrade() -> None:
     op.create_table(
         'notifications',
         sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('user_id', sa.String(36), nullable=False),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('type', notification_type_column_enum, nullable=False),
         sa.Column('title', sa.String(255), nullable=False),
         sa.Column('message', sa.Text(), nullable=False),
