@@ -69,6 +69,19 @@ class TickerPrice(BaseModel):
     # CoinGecko (real data, alternative source) or fully simulated mock data.
     data_source: Literal["binance", "coingecko", "mock"] = "binance"
 
+    # Richer market data (populated when available, e.g. from CoinGecko).
+    market_cap: Optional[float] = None
+    market_cap_change_pct: Optional[float] = None
+    circulating_supply: Optional[float] = None
+    total_supply: Optional[float] = None
+    ath: Optional[float] = None
+    atl: Optional[float] = None
+
+    # How many seconds old this data is relative to when it was fetched from
+    # the upstream source. 0 means it was just fetched (or served from a
+    # very short-lived cache); higher values indicate staler data.
+    data_freshness_seconds: Optional[int] = None
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {

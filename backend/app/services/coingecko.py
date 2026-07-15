@@ -81,6 +81,10 @@ class CoinGeckoClient:
                     "include_24hr_vol": "true",
                     "include_24hr_change": "true",
                     "include_high_low_24h": "true",
+                    "include_ath": "true",
+                    "include_atl": "true",
+                    "include_circulating_supply": "true",
+                    "include_total_supply": "true",
                 }
             )
             r.raise_for_status()
@@ -108,6 +112,12 @@ class CoinGeckoClient:
                 open_price=float(price / (1 + change_24h / 100)),
                 last_updated=datetime.now(timezone.utc),
                 data_source="coingecko",
+                market_cap=float(coin_data.get("usd_market_cap", 0)),
+                market_cap_change_pct=float(coin_data.get("usd_market_cap_change_24h", 0)),
+                circulating_supply=float(coin_data.get("circulating_supply", 0)),
+                total_supply=float(coin_data.get("total_supply", 0)),
+                ath=float(coin_data.get("usd_ath", 0)),
+                atl=float(coin_data.get("usd_atl", 0)),
             )
 
         except Exception as e:
