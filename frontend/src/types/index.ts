@@ -105,3 +105,77 @@ export interface AddToWatchlistRequest {
 export interface ApiError {
   detail: string | { msg: string; type: string }[]
 }
+
+// ── Auth (generic tokens) ───────────────────────────────────────────────────────
+export interface AuthTokens {
+  access_token: string
+  refresh_token: string
+  expires_in: number
+  token_type: string
+}
+
+// ── Chart data (simplified, chart-library friendly) ─────────────────────────────
+export interface Kline {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+// ── Trading Analysis ─────────────────────────────────────────────────────────────
+export interface TrendAnalysis {
+  direction: 'bullish' | 'bearish' | 'neutral'
+  strength: number
+}
+
+export interface SupportResistance {
+  support?: number
+  resistance?: number
+  pivot?: number
+}
+
+export interface Indicators {
+  rsi?: number
+}
+
+export interface TradingSignal {
+  signal: 'buy' | 'sell' | 'hold'
+  confidence: number
+  reasoning: string
+}
+
+export interface RiskManagement {
+  entry_price: number
+  stop_loss: number
+  take_profit_2x: number
+  take_profit_3x: number
+  position_size?: number
+  risk_amount?: number
+}
+
+export interface TradeAnalysis {
+  symbol: string
+  current_price: number
+  trend: TrendAnalysis
+  support_resistance: SupportResistance
+  indicators: Indicators
+  signal: TradingSignal
+  risk_management: RiskManagement
+  timestamp: string
+}
+
+// ── Portfolio ────────────────────────────────────────────────────────────────────
+export interface Position {
+  symbol: string
+  quantity: number
+  entry_price: number
+  current_price: number
+  pnl: number
+  pnl_pct: number
+}
+
+// ── UI Types ─────────────────────────────────────────────────────────────────────
+export type TimeFrame = '1m' | '5m' | '15m' | '1h' | '4h' | '1d' | '1w'
+export type ChartType = 'candlestick' | 'line' | 'area'
