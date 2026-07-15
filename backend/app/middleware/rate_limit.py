@@ -13,9 +13,13 @@ class RateLimiter:
 
     def get_client_id(self, request: Request) -> str:
         """Get unique client identifier from request."""
-        # Prioritize authenticated user ID
-        if hasattr(request, "user") and request.user:
-            return f"user:{request.user.id}"
+        # Prioritize authenticated user ID. request.user is only safe to
+        # access when AuthenticationMiddleware has populated the scope;
+        # otherwise Starlette raises AssertionError. Guard on the scope.
+        if "user" in request.scope and request.scope.get("user"):
+            user = request.scope["user"]
+            if hasattr(user, "id"):
+                return f"user:{user.id}"
         # Fall back to client IP
         client_ip = request.client.host if request.client else "unknown"
         return f"ip:{client_ip}"
