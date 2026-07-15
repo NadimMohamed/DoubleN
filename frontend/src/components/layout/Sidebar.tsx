@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Star, LogOut, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, Star, LogOut, TrendingUp, Sliders, User } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/watchlist', label: 'Watchlist',  icon: Star },
+  { href: '/settings', label: 'Settings', icon: Sliders },
+  { href: '/profile', label: 'Profile', icon: User },
 ]
 
 export function Sidebar() {
