@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import field_validator, Field
 from typing import List
 import secrets
 
@@ -26,8 +26,17 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # ── CORS ─────────────────────────────────────────────────────────────────
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str = Field(
+        default="https://dn-frontend-production-43b8.up.railway.app",
+        description="Frontend URL for CORS configuration"
+    )
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001,https://dn-frontend-production-43b8.up.railway.app"
+
+    # Allowed hosts for TrustedHostMiddleware
+    ALLOWED_HOSTS: list = Field(
+        default=["doublen-production.up.railway.app", "localhost", "127.0.0.1"],
+        description="Allowed hosts list"
+    )
 
     @property
     def cors_origins(self) -> List[str]:

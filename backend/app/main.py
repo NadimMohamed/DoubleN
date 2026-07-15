@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         await conn.run_sync(Base.metadata.create_all)
 
     init_rate_limiter()
+    await verify_rate_limiter()
 
     # NOTE: Binance stream workers are intentionally NOT started here.
     # Railway's hosting IPs are geo-blocked by Binance (HTTP 451), which
@@ -180,20 +181,54 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+
+# Get frontend URL from environment or use default
+frontend_origins = [
+    "https://dn-frontend-production-43b8.up.railway.app",
+    "https://doublen-production.up.railway.app",
+]
+
+# Add localhost for development if not production
+if settings.APP_ENV != "production":
+    frontend_origins.extend([
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=False,  # Required when allow_origins=["*"]
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=frontend_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Content-Type", "Authorization"],
+    max_age=3600,
+    expose_headers=["X-Request-ID"],
 )
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"],  # Allow all hosts
+    allowed_hosts=settings.ALLOWED_HOSTS,
 )
 
 app.middleware("http")(rate_limit_middleware)
+
+# Add logging to verify rate limiter is working
+log.info("app.startup", msg="Rate limiting middleware initialized")
+
+
+async def verify_rate_limiter():
+    """Verify the rate limiter's Redis connection is actually usable."""
+    try:
+        from app.middleware.rate_limit import rate_limiter
+        if rate_limiter and rate_limiter.redis_client:
+            rate_limiter.redis_client.ping()
+            log.info("app.startup", msg="Rate limiter Redis verified")
+        else:
+            log.warning("app.startup", msg="Rate limiter Redis not available")
+    except Exception as e:
+        log.warning("app.startup", msg=f"Rate limiter check failed: {e}")
+
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 app.include_router(api_router)
@@ -202,16 +237,27 @@ app.include_router(api_router)
 # ── Health check ───────────────────────────────────────────────────────────────
 @app.get("/health", tags=["health"], response_model=HealthResponse)
 async def health():
+    """Quick health check - returns 200 if app is running.
+
+    Does NOT check external services (Binance, Redis, etc) as those
+    shouldn't block deployment. Returns their status for monitoring
+    but doesn't fail the check if they're down.
+    """
     from app.services.binance import binance_client
 
+    # Non-blocking Binance status check with timeout
+    binance_ok = False
     try:
-        binance_ok = await binance_client.ping()
+        # Use very short timeout - don't block deployment on external service
+        import asyncio
+        binance_ok = await asyncio.wait_for(binance_client.ping(), timeout=2.0)
+    except asyncio.TimeoutError:
+        log.warning("health.binance_ping_timeout", msg="Binance check timed out")
     except Exception as e:
-        log.error("health.binance_ping_failed", error=str(e))
-        binance_ok = False
+        log.warning("health.binance_ping_failed", error=str(e))
 
     return HealthResponse(
-        status="ok",
+        status="ok",  # Always return ok if app is running
         binance="connected" if binance_ok else "unavailable",
         version="999.999.999",
         env=settings.APP_ENV,
