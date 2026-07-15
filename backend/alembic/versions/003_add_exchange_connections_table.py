@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
         sa.Column('last_connected_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
 
