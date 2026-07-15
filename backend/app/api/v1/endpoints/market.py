@@ -55,11 +55,7 @@ async def get_ticker(response: Response, symbol: str = Path(..., description="e.
             error=str(e),
             msg="Binance/CoinGecko unavailable, falling back to mock ticker data",
         )
-        try:
-            return binance_client.get_mock_ticker(symbol)
-        except Exception as mock_err:
-            log.error("market.ticker.mock_failed", symbol=symbol, error=str(mock_err))
-            raise HTTPException(status_code=502, detail="Unable to retrieve ticker data") from mock_err
+        return binance_client.get_mock_ticker(symbol)
 
 
 @router.get(
@@ -92,11 +88,7 @@ async def get_tickers(
             error=str(e),
             msg="Binance API unavailable, falling back to mock ticker data",
         )
-        try:
-            return binance_client.get_mock_tickers(syms)
-        except Exception as mock_err:
-            log.error("market.tickers.mock_failed", symbols=syms, error=str(mock_err))
-            raise HTTPException(status_code=502, detail="Unable to retrieve ticker data") from mock_err
+        return binance_client.get_mock_tickers(syms)
 
 
 @router.get(
@@ -125,11 +117,7 @@ async def get_klines(
             error=str(e),
             msg="Binance API unavailable, falling back to mock kline data",
         )
-        try:
-            return binance_client.get_mock_klines(symbol, interval, limit)
-        except Exception as mock_err:
-            log.error("market.klines.mock_failed", symbol=symbol, error=str(mock_err))
-            raise HTTPException(status_code=502, detail="Unable to retrieve kline data") from mock_err
+        return binance_client.get_mock_klines(symbol, interval, limit)
 
 
 @router.get(
@@ -154,11 +142,7 @@ async def get_order_book(
             error=str(e),
             msg="Binance API unavailable, falling back to mock order book data",
         )
-        try:
-            return binance_client.get_mock_order_book(symbol, limit)
-        except Exception as mock_err:
-            log.error("market.orderbook.mock_failed", symbol=symbol, error=str(mock_err))
-            raise HTTPException(status_code=502, detail="Unable to retrieve order book data") from mock_err
+        return binance_client.get_mock_order_book(symbol, limit)
 
 
 @router.get(
