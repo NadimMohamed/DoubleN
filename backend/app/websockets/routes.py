@@ -51,7 +51,7 @@ async def websocket_ticker(
         await websocket.close(code=1008, reason="Authentication failed")
         return
 
-    await manager.connect(websocket, symbol)
+    await manager.connect(websocket, symbol, user_id=user_id)
     try:
         while True:
             try:
