@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/watchlist', label: 'Watchlist',  icon: Star },
+  { href: '/trading',   label: 'Trading',    icon: TrendingUp },
 ]
 
 export function Sidebar() {
