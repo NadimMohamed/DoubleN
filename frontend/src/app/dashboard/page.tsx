@@ -1,10 +1,10 @@
 'use client'
-import { useState } from 'react'
+import React, { useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useQuery } from '@tanstack/react-query'
 import { AuthGuard } from '@/components/auth/AuthGuard'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Topbar } from '@/components/layout/Topbar'
-import { TradingChart } from '@/components/charts/TradingChart'
 import { LiveTicker } from '@/components/dashboard/LiveTicker'
 import { marketApi } from '@/lib/api'
 import { formatPrice, formatPct, formatVolume, SYMBOL_DISPLAY } from '@/lib/utils'
@@ -12,9 +12,22 @@ import { cn } from '@/lib/utils'
 import { TrendingUp, TrendingDown, BarChart3, Activity } from 'lucide-react'
 import type { TickerPrice } from '@/types'
 
+const TradingChart = dynamic(
+  () => import('@/components/charts/TradingChart').then((m) => ({ default: m.TradingChart })),
+  { loading: () => <div className="card p-6 h-[420px] animate-pulse bg-panel-hover rounded" /> }
+)
+
 const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']
 
-function SymbolCard({ ticker, active, onClick }: { ticker: TickerPrice; active: boolean; onClick: () => void }) {
+const SymbolCard = React.memo(function SymbolCard({
+  ticker,
+  active,
+  onClick,
+}: {
+  ticker: TickerPrice
+  active: boolean
+  onClick: () => void
+}) {
   const up = ticker.price_change_pct >= 0
   const info = SYMBOL_DISPLAY[ticker.symbol] ?? { name: ticker.symbol, icon: '?' }
 
@@ -43,7 +56,7 @@ function SymbolCard({ ticker, active, onClick }: { ticker: TickerPrice; active: 
       <div className="text-xs text-slate mt-1">Vol: {formatVolume(ticker.quote_volume)}</div>
     </div>
   )
-}
+})
 
 export default function DashboardPage() {
   const [activeSymbol, setActiveSymbol] = useState('BTCUSDT')

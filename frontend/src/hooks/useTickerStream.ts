@@ -28,6 +28,9 @@ export function useTickerStream({ symbol, enabled = true }: UseTickerStreamOptio
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const backoffRef = useRef(1000)
   const mountedRef = useRef(true)
+  // Batch updates using requestAnimationFrame for better performance
+  const rafRef = useRef<number | null>(null)
+  const pendingStateRef = useRef<Partial<TickerState> | null>(null)
 
   const connect = useCallback(() => {
     if (!enabled || !mountedRef.current) return
@@ -47,7 +50,8 @@ export function useTickerStream({ symbol, enabled = true }: UseTickerStreamOptio
       try {
         const msg: WsTickerMessage = JSON.parse(event.data)
         if (msg.type === 'ticker') {
-          setState({
+          // Batch updates with RAF
+          pendingStateRef.current = {
             price: msg.price,
             open: msg.open,
             high: msg.high,
@@ -55,7 +59,16 @@ export function useTickerStream({ symbol, enabled = true }: UseTickerStreamOptio
             volume: msg.volume,
             isConnected: true,
             lastUpdated: msg.timestamp,
-          })
+          }
+
+          if (rafRef.current === null) {
+            rafRef.current = requestAnimationFrame(() => {
+              if (pendingStateRef.current) {
+                setState((s) => ({ ...s, ...pendingStateRef.current }))
+              }
+              rafRef.current = null
+            })
+          }
         }
       } catch {}
     }
@@ -63,10 +76,10 @@ export function useTickerStream({ symbol, enabled = true }: UseTickerStreamOptio
     ws.onclose = () => {
       if (!mountedRef.current) return
       setState((s) => ({ ...s, isConnected: false }))
-      // Exponential backoff reconnect
+      // Exponential backoff, cap at 10s (reduced from 30s)
       reconnectTimer.current = setTimeout(() => {
         if (mountedRef.current) {
-          backoffRef.current = Math.min(backoffRef.current * 2, 30000)
+          backoffRef.current = Math.min(backoffRef.current * 2, 10000)
           connect()
         }
       }, backoffRef.current)
@@ -83,6 +96,7 @@ export function useTickerStream({ symbol, enabled = true }: UseTickerStreamOptio
     return () => {
       mountedRef.current = false
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
       if (wsRef.current) {
         wsRef.current.onclose = null
         wsRef.current.close()
