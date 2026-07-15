@@ -1,4 +1,3 @@
-import asyncio
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -15,15 +14,10 @@ from app.core.config import settings
 from app.api.v1.router import api_router
 from app.schemas.health import HealthResponse
 from app.websockets.routes import router as ws_router
-from app.websockets.manager import binance_stream_worker
 from app.db.session import engine, Base
 
 log = structlog.get_logger(__name__)
 
-# Symbols to stream on startup — must include the symbols shown on the
-# dashboard so the /ws/ticker/{symbol} clients actually receive live
-# price broadcasts instead of connecting to an idle stream.
-DEFAULT_STREAM_SYMBOLS = ["BTCUSDT", "ETHUSDT", "LTCUSDT", "SOLUSDT"]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
@@ -34,23 +28,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Start Binance stream workers for default symbols
-    stream_tasks = []
-    for symbol in DEFAULT_STREAM_SYMBOLS:
-        task = asyncio.create_task(
-            binance_stream_worker(symbol),
-            name=f"binance_stream_{symbol}",
-        )
-        stream_tasks.append(task)
-        log.info("binance.stream.started", symbol=symbol)
+    # NOTE: Binance stream workers are intentionally NOT started here.
+    # Railway's hosting IPs are geo-blocked by Binance (HTTP 451), which
+    # made the outbound `binance_stream_worker` connections fail on every
+    # attempt and constantly retry with backoff for no benefit. Real-time
+    # prices are now served via REST polling (see app/services/binance.py,
+    # which caches responses for a couple of seconds), which is reliable
+    # from this environment. The /ws/ticker/{symbol} endpoint still works
+    # for any client that connects directly — it just won't receive
+    # broadcasts unless something calls `manager.broadcast(...)`. If
+    # Binance WebSocket connectivity is restored, `binance_stream_worker`
+    # can be re-enabled here for lower-latency updates.
 
     yield  # Application runs here
 
     # Graceful shutdown
     log.info("app.shutting_down")
-    for task in stream_tasks:
-        task.cancel()
-    await asyncio.gather(*stream_tasks, return_exceptions=True)
     await engine.dispose()
     log.info("app.stopped")
 
