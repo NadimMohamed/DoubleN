@@ -52,11 +52,22 @@ class Settings(BaseSettings):
     # Binance's REST/WebSocket endpoints are frequently unreachable from
     # Railway's hosting IPs (HTTP 451 — geo-blocked). When enabled, ticker
     # requests fall back to CoinGecko's free public API (real data, no auth
-    # required, 10-50 calls/minute — sufficient for polling dashboards) before
-    # finally falling back to simulated mock data.
-    # Priority order: binance > coingecko > mock
+    # required, 10-50 calls/minute — sufficient for polling dashboards).
+    # Priority order: binance > coingecko. This app never falls back to
+    # simulated/mock data — if both real sources fail, an error is returned.
     USE_COINGECKO_FALLBACK: bool = True
     COINGECKO_API_TIMEOUT: int = 10
+
+    # Simulated/mock market data is disabled by default and should only ever
+    # be re-enabled explicitly, as a deliberate emergency override — never as
+    # a silent fallback. When False (the default), no endpoint will return
+    # fabricated prices under any circumstance.
+    USE_MOCK_DATA: bool = False
+
+    # When True (the default), the app requires real data from Binance or
+    # CoinGecko for every market data request. If both fail, the request
+    # fails with a 503 rather than silently degrading to stale/fake data.
+    REQUIRE_LIVE_DATA: bool = True
 
     # ── Rate limiting ────────────────────────────────────────────────────────
     RATE_LIMIT_PER_MINUTE: int = 60
