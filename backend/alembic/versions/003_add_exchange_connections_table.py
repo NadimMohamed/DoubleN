@@ -7,6 +7,7 @@ Create Date: 2026-07-17 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -20,7 +21,7 @@ def upgrade() -> None:
     op.create_table(
         'exchange_connections',
         sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('user_id', sa.String(36), nullable=False),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('exchange', sa.String(50), nullable=False),
         sa.Column('api_key_encrypted', sa.Text(), nullable=False),
         sa.Column('api_secret_encrypted', sa.Text(), nullable=False),
