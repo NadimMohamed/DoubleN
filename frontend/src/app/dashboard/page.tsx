@@ -6,6 +6,7 @@ import { AuthGuard } from '@/components/auth/AuthGuard'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Topbar } from '@/components/layout/Topbar'
 import { LiveTicker } from '@/components/dashboard/LiveTicker'
+import { AIAnalysisCard } from '@/components/dashboard/AIAnalysisCard'
 import { marketApi } from '@/lib/api'
 import { formatPrice, formatPct, formatVolume, SYMBOL_DISPLAY } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -135,6 +136,9 @@ export default function DashboardPage() {
 
             {/* TradingView chart */}
             <TradingChart symbol={activeSymbol} interval="1h" height={420} />
+
+            {/* AI analysis */}
+            <AIAnalysisCard symbol={activeSymbol} />
 
             {/* Market stats row */}
             {activeTicker && (
