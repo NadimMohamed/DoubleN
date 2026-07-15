@@ -54,6 +54,7 @@ function AnalysisSkeleton() {
 export default function TradingPage() {
   const [selectedSymbol, setSelectedSymbol] = useState('BTCUSDT')
   const [accountBalance, setAccountBalance] = useState(10000)
+  const [riskPercent, setRiskPercent] = useState(2)
 
   const {
     data: analysis,
@@ -259,6 +260,127 @@ export default function TradingPage() {
                 </div>
               </>
             ) : null}
+
+            {analysis && (
+              <>
+                {/* Risk Management Section */}
+                <div className="card p-6">
+                  <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">
+                    Risk Management
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-xs text-slate uppercase tracking-wider mb-2">Entry Price</p>
+                      <p className="text-2xl font-bold text-white">${analysis.current_price.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate uppercase tracking-wider mb-2">Support (SL)</p>
+                      <p className="text-2xl font-bold text-danger">
+                        ${analysis.support_resistance.support?.toFixed(2) || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate uppercase tracking-wider mb-2">Resistance (TP)</p>
+                      <p className="text-2xl font-bold text-emerald">
+                        ${analysis.support_resistance.resistance?.toFixed(2) || 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Risk/Reward Calculation */}
+                  {analysis.support_resistance.support && analysis.support_resistance.resistance && (
+                    <div className="mt-4 pt-4 border-t border-panel-border">
+                      {(() => {
+                        const entry = analysis.current_price;
+                        const sl = analysis.support_resistance.support;
+                        const tp = analysis.support_resistance.resistance;
+                        const risk = entry - sl;
+                        const reward = tp - entry;
+                        const ratio = risk > 0 ? (reward / risk).toFixed(2) : 0;
+
+                        return (
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <p className="text-xs text-slate mb-1">Risk</p>
+                              <p className="text-lg font-bold text-danger">${risk.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate mb-1">Reward</p>
+                              <p className="text-lg font-bold text-emerald">${reward.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate mb-1">R:R Ratio</p>
+                              <p className="text-lg font-bold text-blue">1:{ratio}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate mb-1">Signal</p>
+                              <p className={cn('text-lg font-bold capitalize',
+                                analysis.signal.signal === 'buy' ? 'text-emerald' :
+                                analysis.signal.signal === 'sell' ? 'text-danger' :
+                                'text-slate'
+                              )}>
+                                {analysis.signal.signal}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Position Size Calculator */}
+                <div className="card p-6">
+                  <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">
+                    Position Sizing
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs text-slate uppercase tracking-wider block mb-2">
+                        Account Balance (USD)
+                      </label>
+                      <input
+                        type="number"
+                        value={accountBalance}
+                        onChange={(e) => setAccountBalance(Number(e.target.value))}
+                        className="w-full bg-panel-hover border border-panel-border rounded px-3 py-2 text-white text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate uppercase tracking-wider block mb-2">
+                        Risk Per Trade (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="10"
+                        step="0.1"
+                        value={riskPercent}
+                        onChange={(e) => setRiskPercent(Number(e.target.value))}
+                        className="w-full bg-panel-hover border border-panel-border rounded px-3 py-2 text-white text-sm"
+                      />
+                    </div>
+                    <div className="bg-panel-hover p-4 rounded-lg">
+                      <p className="text-xs text-slate mb-2">Recommended Position Size</p>
+                      <p className="text-2xl font-bold text-blue">
+                        {(() => {
+                          const riskFraction = riskPercent / 100;
+                          const riskAmount = accountBalance * riskFraction;
+                          if (analysis.support_resistance.support) {
+                            const riskPerUnit = analysis.current_price - analysis.support_resistance.support;
+                            return (riskAmount / riskPerUnit).toFixed(4);
+                          }
+                          return 'N/A';
+                        })()}
+                      </p>
+                      <p className="text-xs text-slate mt-1">
+                        Risk amount: ${(accountBalance * (riskPercent / 100)).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </main>
         </div>
       </div>
