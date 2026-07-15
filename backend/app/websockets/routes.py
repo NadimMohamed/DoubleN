@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Path, Query
 import asyncio
 import structlog
@@ -21,12 +22,33 @@ async def _validate_symbol(symbol: str) -> str:
 async def websocket_ticker(
     websocket: WebSocket,
     symbol: str = Path(...),
+    token: str = Query(..., description="JWT access token"),
     update_interval: int = Query(default=5, ge=1, le=60),
 ):
+    """
+    WebSocket endpoint for live ticker streaming.
+    
+    Requires authentication via JWT token in query parameter.
+    Connect with: ws://host/ws/ticker/BTCUSDT?token=YOUR_JWT_TOKEN
+    """
     try:
         symbol = await _validate_symbol(symbol)
     except (ValueError, InvalidSymbolError) as e:
         await websocket.close(code=1008, reason=str(e))
+        return
+    
+    # Authenticate user via JWT token
+    try:
+        from app.core.security import decode_token
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=1008, reason="Invalid token: no user")
+            return
+        log.info("ws.authenticated", symbol=symbol, user_id=user_id)
+    except Exception as e:
+        log.warning("ws.auth_failed", symbol=symbol, error=str(e))
+        await websocket.close(code=1008, reason="Authentication failed")
         return
 
     await manager.connect(websocket, symbol)
@@ -43,6 +65,7 @@ async def websocket_ticker(
                     "low_24h": ticker.low_24h,
                     "volume": ticker.volume,
                     "quote_volume": ticker.quote_volume,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
                 await manager.broadcast(symbol, data)
             except Exception as e:
@@ -58,6 +81,7 @@ async def websocket_ticker(
                         "low_24h": ticker.low_24h,
                         "volume": ticker.volume,
                         "quote_volume": ticker.quote_volume,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                     await manager.broadcast(symbol, data)
                 except Exception as mock_err:
@@ -67,7 +91,7 @@ async def websocket_ticker(
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, symbol)
-        log.info("ws.disconnect", symbol=symbol)
+        log.info("ws.disconnect", symbol=symbol, user_id=user_id)
     except Exception as e:
         log.error("ws.error", symbol=symbol, error=str(e))
         manager.disconnect(websocket, symbol)
