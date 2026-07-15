@@ -34,38 +34,33 @@ def _validate_symbol(symbol: str) -> str:
 @router.get(
     "/ticker/{symbol}",
     response_model=TickerPrice,
-    summary="Get 24h ticker (from Binance, CoinGecko, or cache)",
+    summary="Get 24h ticker (from Binance or CoinGecko — live data only)",
     description=(
-        "Returns ticker data from Binance if available, falls back to "
+        "Returns ticker data from Binance if available, falling back to "
         "CoinGecko when Binance is unreachable (e.g. geo-blocked from the "
-        "hosting environment), then falls back further to stale cache or "
-        "simulated mock data. Check the 'data_source' field on the response "
-        "to see which origin actually served the data."
+        "hosting environment). This endpoint never returns simulated/mock "
+        "data — if both Binance and CoinGecko are unavailable, a 503 error "
+        "is returned instead of fabricated prices. Check the 'data_source' "
+        "field on the response to see which origin actually served the data."
     ),
 )
 async def get_ticker(response: Response, symbol: str = Path(..., description="e.g. BTCUSDT")):
     symbol = _validate_symbol(symbol)
     response.headers["Cache-Control"] = CACHE_CONTROL_SHORT
-    try:
-        return await binance_client.get_ticker_24h(symbol)
-    except Exception as e:
-        log.warning(
-            "market.ticker.fallback_to_mock",
-            symbol=symbol,
-            error=str(e),
-            msg="Binance/CoinGecko unavailable, falling back to mock ticker data",
-        )
-        return binance_client.get_mock_ticker(symbol)
+    return await binance_client.get_ticker_24h(symbol)
 
 
 @router.get(
     "/tickers",
     response_model=list[TickerPrice],
-    summary="Get tickers for multiple symbols (from Binance, CoinGecko, or cache)",
+    summary="Get tickers for multiple symbols (from Binance or CoinGecko — live data only)",
     description=(
         "Returns ticker data from Binance if available, falling back to "
-        "CoinGecko and then mock data per-symbol. Check each item's "
-        "'data_source' field to see which origin served that entry."
+        "CoinGecko per-symbol. This endpoint never returns simulated/mock "
+        "data — if a symbol cannot be served from either source, the "
+        "request fails with an error rather than showing fabricated prices. "
+        "Check each item's 'data_source' field to see which origin served "
+        "that entry."
     ),
 )
 async def get_tickers(
@@ -79,22 +74,13 @@ async def get_tickers(
     if not syms:
         raise ValidationError("No valid symbols provided")
     response.headers["Cache-Control"] = CACHE_CONTROL_SHORT
-    try:
-        return await binance_client.get_multiple_tickers(syms)
-    except Exception as e:
-        log.warning(
-            "market.tickers.fallback_to_mock",
-            symbols=syms,
-            error=str(e),
-            msg="Binance API unavailable, falling back to mock ticker data",
-        )
-        return binance_client.get_mock_tickers(syms)
+    return await binance_client.get_multiple_tickers(syms)
 
 
 @router.get(
     "/klines/{symbol}",
     response_model=list[KlineData],
-    summary="Get OHLCV candlestick data (for TradingView charts)",
+    summary="Get OHLCV candlestick data (for TradingView charts) — live data only",
 )
 async def get_klines(
     response: Response,
@@ -106,24 +92,13 @@ async def get_klines(
     if interval not in VALID_INTERVALS:
         raise ValidationError(f"Invalid interval '{interval}'. Valid: {sorted(VALID_INTERVALS)}")
     response.headers["Cache-Control"] = CACHE_CONTROL_SHORT
-    try:
-        return await binance_client.get_klines(symbol, interval, limit)
-    except Exception as e:
-        log.warning(
-            "market.klines.fallback_to_mock",
-            symbol=symbol,
-            interval=interval,
-            limit=limit,
-            error=str(e),
-            msg="Binance API unavailable, falling back to mock kline data",
-        )
-        return binance_client.get_mock_klines(symbol, interval, limit)
+    return await binance_client.get_klines(symbol, interval, limit)
 
 
 @router.get(
     "/orderbook/{symbol}",
     response_model=OrderBook,
-    summary="Get current order book",
+    summary="Get current order book — live data only",
 )
 async def get_order_book(
     response: Response,
@@ -132,17 +107,7 @@ async def get_order_book(
 ):
     symbol = _validate_symbol(symbol)
     response.headers["Cache-Control"] = CACHE_CONTROL_SHORT
-    try:
-        return await binance_client.get_order_book(symbol, limit)
-    except Exception as e:
-        log.warning(
-            "market.orderbook.fallback_to_mock",
-            symbol=symbol,
-            limit=limit,
-            error=str(e),
-            msg="Binance API unavailable, falling back to mock order book data",
-        )
-        return binance_client.get_mock_order_book(symbol, limit)
+    return await binance_client.get_order_book(symbol, limit)
 
 
 @router.get(
