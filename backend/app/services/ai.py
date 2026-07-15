@@ -1,131 +1,98 @@
-from app.services.ta import ta_calculator
-from app.schemas.trading import Signal, SignalType, Trend, TrendDirection, Indicators, SupportResistance, MarketAnalysis
-from app.schemas.market import TickerPrice, KlineData
-from typing import Optional
+"""
+AI-assisted market analysis service.
+
+Combines trend detection, technical indicators (RSI, MACD, EMA, ATR) and a
+rule-based trading signal into a single `MarketAnalysis` response. The
+signal generation itself is deterministic technical analysis (see
+`app.services.trading_analysis`) rather than a call to an external LLM —
+"AI" here refers to the produced signal + reasoning, not the underlying
+implementation.
+"""
+from typing import List
 import structlog
+
+from app.schemas.market import TickerPrice, KlineData
+from app.schemas.trading import (
+    MarketAnalysis,
+    Signal,
+    SignalType,
+    Trend,
+    TrendDirection,
+    SupportResistance,
+    Indicators,
+)
+from app.services.trading_analysis import (
+    TrendAnalysis,
+    TechnicalIndicators,
+    SupportResistance as SupportResistanceCalculator,
+    SignalGenerator,
+    SignalType as TASignalType,
+)
+from app.services.ta import TACalculator
 
 log = structlog.get_logger(__name__)
 
+
 class AIAnalyzer:
-    @staticmethod
-    async def analyze_market(ticker: TickerPrice, klines: list[KlineData]) -> MarketAnalysis:
+    """Generates a comprehensive market analysis for a symbol."""
+
+    async def analyze_market(self, ticker: TickerPrice, klines: List[KlineData]) -> MarketAnalysis:
+        current_price = ticker.price
+
+        trend_direction, trend_strength = TrendAnalysis.detect_trend(klines)
+        rsi = TechnicalIndicators.calculate_rsi(klines)
+        macd = TechnicalIndicators.calculate_macd(klines)
+        sr = SupportResistanceCalculator.calculate_levels(klines)
+
+        signal_type, confidence, reasoning = SignalGenerator.generate_signal(
+            trend_direction, rsi, current_price, sr
+        )
+
         closes = [float(k.close) for k in klines]
         highs = [float(k.high) for k in klines]
         lows = [float(k.low) for k in klines]
-        
-        rsi_values = ta_calculator.rsi(closes)
-        rsi = rsi_values[-1] if rsi_values else None
-        
-        macd_line, macd_signal, _ = ta_calculator.macd(closes)
-        macd = macd_line[-1] if macd_line else None
-        macd_sig = macd_signal[-1] if macd_signal else None
-        
-        ema_12 = ta_calculator._ema(closes, 12)[-1] if len(closes) >= 12 else None
-        ema_26 = ta_calculator._ema(closes, 26)[-1] if len(closes) >= 26 else None
-        
-        atr_values = ta_calculator.atr(highs, lows, closes)
-        atr = atr_values[-1] if atr_values else None
-        
-        support, resistance = ta_calculator.support_resistance(closes)
-        
-        trend = AIAnalyzer._calculate_trend(closes, rsi, ema_12, ema_26, macd, macd_sig)
-        signal = AIAnalyzer._generate_signal(ticker.price, closes, rsi, macd, macd_sig, ema_12, ema_26, support, resistance, trend)
-        
+
+        ema_12_series = TACalculator._ema(closes, 12)
+        ema_26_series = TACalculator._ema(closes, 26)
+        atr_series = TACalculator.atr(highs, lows, closes)
+
+        ema_12 = ema_12_series[-1] if ema_12_series else None
+        ema_26 = ema_26_series[-1] if ema_26_series else None
+        atr = atr_series[-1] if atr_series else None
+
+        signal = Signal(
+            signal=self._map_signal(signal_type),
+            confidence=confidence,
+            reasoning=reasoning or "No strong signal detected",
+        )
+        trend = Trend(direction=TrendDirection(trend_direction.value), strength=trend_strength)
+        support_resistance = SupportResistance(support=sr.get("support"), resistance=sr.get("resistance"))
+        indicators = Indicators(
+            rsi=rsi,
+            macd=macd.get("macd"),
+            macd_signal=macd.get("signal"),
+            ema_12=round(ema_12, 4) if ema_12 is not None else None,
+            ema_26=round(ema_26, 4) if ema_26 is not None else None,
+            atr=round(atr, 4) if atr is not None else None,
+        )
+
         return MarketAnalysis(
             symbol=ticker.symbol,
-            current_price=ticker.price,
+            current_price=current_price,
             signal=signal,
             trend=trend,
-            support_resistance=SupportResistance(support=support, resistance=resistance),
-            indicators=Indicators(rsi=rsi, macd=macd, macd_signal=macd_sig, ema_12=ema_12, ema_26=ema_26, atr=atr)
+            support_resistance=support_resistance,
+            indicators=indicators,
         )
-    
+
     @staticmethod
-    def _calculate_trend(closes: list, rsi: Optional[float], ema_12: Optional[float], ema_26: Optional[float], macd: Optional[float], macd_sig: Optional[float]) -> Trend:
-        bullish_signals = 0
-        total_signals = 0
-        
-        if ema_12 and ema_26:
-            total_signals += 1
-            if ema_12 > ema_26:
-                bullish_signals += 1
-        
-        if rsi:
-            total_signals += 1
-            if 50 < rsi < 70:
-                bullish_signals += 0.5
-            elif rsi >= 70:
-                bullish_signals += 1
-            elif rsi < 30:
-                bullish_signals -= 0.5
-        
-        if macd and macd_sig:
-            total_signals += 1
-            if macd > macd_sig:
-                bullish_signals += 1
-        
-        if len(closes) >= 2:
-            total_signals += 1
-            if closes[-1] > closes[-2]:
-                bullish_signals += 0.5
-        
-        if total_signals == 0:
-            return Trend(direction=TrendDirection.NEUTRAL, strength=0)
-        
-        strength = (bullish_signals / total_signals) * 100
-        direction = TrendDirection.BULLISH if strength >= 65 else TrendDirection.BEARISH if strength <= 35 else TrendDirection.NEUTRAL
-        return Trend(direction=direction, strength=round(strength))
-    
-    @staticmethod
-    def _generate_signal(current_price: float, closes: list, rsi: Optional[float], macd: Optional[float], macd_sig: Optional[float], ema_12: Optional[float], ema_26: Optional[float], support: Optional[float], resistance: Optional[float], trend: Trend) -> Signal:
-        buy_points = 0
-        sell_points = 0
-        reasoning_parts = []
-        
-        if rsi:
-            if rsi < 30:
-                buy_points += 2
-                reasoning_parts.append("RSI oversold")
-            elif rsi < 40:
-                buy_points += 1
-            elif rsi > 70:
-                sell_points += 2
-                reasoning_parts.append("RSI overbought")
-            elif rsi > 60:
-                sell_points += 1
-        
-        if macd and macd_sig:
-            if macd > macd_sig:
-                buy_points += 1
-                reasoning_parts.append("MACD bullish")
-            elif macd < macd_sig:
-                sell_points += 1
-                reasoning_parts.append("MACD bearish")
-        
-        if ema_12 and ema_26:
-            if ema_12 > ema_26:
-                buy_points += 1
-            else:
-                sell_points += 1
-        
-        if trend.direction == TrendDirection.BULLISH:
-            buy_points += 1
-        elif trend.direction == TrendDirection.BEARISH:
-            sell_points += 1
-        
-        total_points = buy_points + sell_points
-        
-        if buy_points > sell_points:
-            signal_type = SignalType.BUY
-            confidence = (buy_points / max(total_points, 1)) * 100
-        elif sell_points > buy_points:
-            signal_type = SignalType.SELL
-            confidence = (sell_points / max(total_points, 1)) * 100
-        else:
-            signal_type = SignalType.NEUTRAL
-            confidence = 50.0
-        
-        reasoning = " | ".join(reasoning_parts) if reasoning_parts else "Mixed signals"
-        return Signal(signal=signal_type, confidence=round(min(confidence, 95)), reasoning=reasoning)
+    def _map_signal(signal_type: TASignalType) -> SignalType:
+        mapping = {
+            TASignalType.BUY: SignalType.BUY,
+            TASignalType.SELL: SignalType.SELL,
+            TASignalType.HOLD: SignalType.NEUTRAL,
+        }
+        return mapping.get(signal_type, SignalType.NEUTRAL)
+
 
 ai_analyzer = AIAnalyzer()
