@@ -1,50 +1,73 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from app.websockets.manager import manager
-from app.schemas.market import SUPPORTED_SYMBOLS
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Path, Query
+import asyncio
 import structlog
+from app.websockets.manager import manager
+from app.services.binance import binance_client
+from app.schemas.market import SUPPORTED_SYMBOLS
+from app.core.exceptions import InvalidSymbolError
 
 log = structlog.get_logger(__name__)
-router = APIRouter(tags=["websocket"])
+router = APIRouter(prefix="/ws", tags=["websocket"])
 
+async def _validate_symbol(symbol: str) -> str:
+    if not symbol or not symbol.strip():
+        raise ValueError("Symbol must not be empty")
+    s = symbol.strip().upper()
+    if s not in SUPPORTED_SYMBOLS:
+        raise InvalidSymbolError(s, SUPPORTED_SYMBOLS)
+    return s
 
-@router.websocket("/ws/ticker/{symbol}")
+@router.websocket("/ticker/{symbol}")
 async def websocket_ticker(
     websocket: WebSocket,
-    symbol: str,
-    token: str = Query(default=None, description="Optional JWT for auth"),
+    symbol: str = Path(...),
+    update_interval: int = Query(default=5, ge=1, le=60),
 ):
-    """
-    WebSocket endpoint for live price streaming.
-
-    Connect: ws://host/ws/ticker/BTCUSDT
-
-    Receives messages:
-    {
-        "type": "ticker",
-        "symbol": "BTCUSDT",
-        "price": 67432.10,
-        "open": 66000.00,
-        "high": 68100.00,
-        "low": 65800.00,
-        "volume": 18432.5,
-        "quote_volume": 1234567890.0,
-        "timestamp": 1716000000000
-    }
-    """
-    symbol = symbol.upper()
-    if symbol not in SUPPORTED_SYMBOLS:
-        await websocket.close(code=4004, reason=f"Symbol {symbol} not supported")
+    try:
+        symbol = await _validate_symbol(symbol)
+    except (ValueError, InvalidSymbolError) as e:
+        await websocket.close(code=1008, reason=str(e))
         return
 
     await manager.connect(websocket, symbol)
     try:
-        # Keep connection alive; client can send pings
         while True:
-            data = await websocket.receive_text()
-            if data == "ping":
-                await websocket.send_text("pong")
+            try:
+                ticker = await binance_client.get_ticker_24h(symbol)
+                data = {
+                    "symbol": ticker.symbol,
+                    "price": ticker.price,
+                    "price_change": ticker.price_change,
+                    "price_change_pct": ticker.price_change_pct,
+                    "high_24h": ticker.high_24h,
+                    "low_24h": ticker.low_24h,
+                    "volume": ticker.volume,
+                    "quote_volume": ticker.quote_volume,
+                }
+                await manager.broadcast(symbol, data)
+            except Exception as e:
+                log.warning("ws.ticker_fetch_failed", symbol=symbol, error=str(e))
+                try:
+                    ticker = binance_client.get_mock_ticker(symbol)
+                    data = {
+                        "symbol": ticker.symbol,
+                        "price": ticker.price,
+                        "price_change": ticker.price_change,
+                        "price_change_pct": ticker.price_change_pct,
+                        "high_24h": ticker.high_24h,
+                        "low_24h": ticker.low_24h,
+                        "volume": ticker.volume,
+                        "quote_volume": ticker.quote_volume,
+                    }
+                    await manager.broadcast(symbol, data)
+                except Exception as mock_err:
+                    log.error("ws.mock_ticker_failed", symbol=symbol, error=str(mock_err))
+
+            await asyncio.sleep(update_interval)
+
     except WebSocketDisconnect:
         manager.disconnect(websocket, symbol)
+        log.info("ws.disconnect", symbol=symbol)
     except Exception as e:
-        log.error("ws.ticker.error", symbol=symbol, error=str(e))
+        log.error("ws.error", symbol=symbol, error=str(e))
         manager.disconnect(websocket, symbol)
