@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { AuthGuard } from '@/components/auth/AuthGuard'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Topbar } from '@/components/layout/Topbar'
-import { watchlistApi } from '@/lib/api'
+import { watchlistApi, getErrorMessage } from '@/lib/api'
 import { formatPrice, formatPct, formatVolume, SUPPORTED_SYMBOLS, SYMBOL_DISPLAY } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { Plus, Trash2, TrendingUp, TrendingDown, Star, RefreshCw } from 'lucide-react'
@@ -65,9 +65,44 @@ function AddSymbolModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+function WatchlistRowSkeleton() {
+  return (
+    <div className="flex items-center px-4 py-3 border-b border-panel-border/50 animate-pulse">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="w-9 h-9 rounded-xl bg-panel-hover flex-shrink-0" />
+        <div className="space-y-1.5">
+          <div className="h-3.5 w-20 bg-panel-hover rounded" />
+          <div className="h-3 w-14 bg-panel-hover rounded" />
+        </div>
+      </div>
+      <div className="w-32 flex justify-end hidden sm:flex">
+        <div className="h-3.5 w-16 bg-panel-hover rounded" />
+      </div>
+      <div className="w-24 flex justify-end hidden sm:flex">
+        <div className="h-3.5 w-12 bg-panel-hover rounded" />
+      </div>
+      <div className="w-28 flex justify-end hidden lg:flex">
+        <div className="h-3 w-14 bg-panel-hover rounded" />
+      </div>
+      <div className="w-28 flex justify-end hidden lg:flex">
+        <div className="h-3 w-14 bg-panel-hover rounded" />
+      </div>
+      <div className="w-28 flex justify-end hidden xl:flex">
+        <div className="h-3 w-14 bg-panel-hover rounded" />
+      </div>
+      <div className="w-10" />
+    </div>
+  )
+}
+
 function WatchlistRow({ item, onRemove }: { item: WatchlistItem; onRemove: (id: string) => void }) {
   const up = (item.price_change_pct_24h ?? 0) >= 0
   const info = SYMBOL_DISPLAY[item.symbol] ?? { icon: '?', name: item.symbol }
+  // A row with no price yet (still resolving on the backend, or the
+  // upstream fetch genuinely failed) shows a soft skeleton for its price
+  // cells instead of a static "—" so it's visually clear more data is
+  // still on the way rather than permanently missing.
+  const priceUnresolved = item.price === null
 
   return (
     <div className="flex items-center px-4 py-3 border-b border-panel-border/50 hover:bg-panel-hover transition-colors group">
@@ -85,7 +120,14 @@ function WatchlistRow({ item, onRemove }: { item: WatchlistItem; onRemove: (id: 
       {/* Price */}
       <div className="w-32 text-right hidden sm:block">
         <div className="text-sm font-bold text-white tabular-nums">
-          {item.price !== null ? formatPrice(item.price) : <span className="text-slate text-xs">Loading…</span>}
+          {!priceUnresolved ? (
+            formatPrice(item.price as number)
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-slate text-xs">
+              <span className="w-3 h-3 border-2 border-slate/40 border-t-slate rounded-full animate-spin" />
+              Loading…
+            </span>
+          )}
         </div>
       </div>
 
@@ -130,11 +172,27 @@ export default function WatchlistPage() {
   const [showAdd, setShowAdd] = useState(false)
   const queryClient = useQueryClient()
 
-  const { data: items, isLoading, isFetching, refetch } = useQuery({
+  const {
+    data: items,
+    isLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['watchlist'],
     queryFn: watchlistApi.getWatchlist,
-    refetchInterval: 15_000,
-    staleTime: 10_000,
+    // staleTime must stay below refetchInterval — previously staleTime
+    // (10s) was shorter than refetchInterval (15s) which is fine, but the
+    // two were close enough that background refetches (triggered by focus/
+    // reconnect) constantly raced the interval refetch, causing the table
+    // to flash into a loading state repeatedly. Widening the gap avoids that.
+    staleTime: 12_000,
+    refetchInterval: 20_000,
+    // Individual price fetch failures are already handled gracefully by the
+    // backend (it falls back to simulated prices), so retries here are for
+    // genuine request failures (auth, network, 5xx).
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   })
 
   const { mutate: removeItem } = useMutation({
@@ -192,8 +250,23 @@ export default function WatchlistPage() {
               </div>
 
               {isLoading ? (
+                <>
+                  {[0, 1, 2, 3].map((i) => (
+                    <WatchlistRowSkeleton key={i} />
+                  ))}
+                </>
+              ) : error ? (
                 <div className="p-8 text-center">
-                  <div className="w-6 h-6 border-2 border-blue border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-danger font-medium">Failed to load watchlist</p>
+                  <p className="text-slate/60 text-sm mt-1">{getErrorMessage(error)}</p>
+                  <button
+                    onClick={() => refetch()}
+                    disabled={isFetching}
+                    className="btn-secondary px-4 py-2 text-sm mt-4 mx-auto"
+                  >
+                    <RefreshCw className={cn('w-3.5 h-3.5', isFetching && 'animate-spin')} />
+                    {isFetching ? 'Retrying…' : 'Retry'}
+                  </button>
                 </div>
               ) : items?.length === 0 ? (
                 <div className="p-12 text-center">
