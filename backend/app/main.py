@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.api.v1.router import api_router
 from app.schemas.health import HealthResponse
 from app.db.session import engine, Base
+from app.middleware.rate_limit import init_rate_limiter, rate_limit_middleware
 
 log = structlog.get_logger(__name__)
 
@@ -26,6 +27,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # Create database tables (Alembic handles migrations in production)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    init_rate_limiter()
 
     # NOTE: Binance stream workers are intentionally NOT started here.
     # Railway's hosting IPs are geo-blocked by Binance (HTTP 451), which
@@ -189,6 +192,8 @@ app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["*"],  # Allow all hosts
 )
+
+app.middleware("http")(rate_limit_middleware)
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 app.include_router(api_router)
