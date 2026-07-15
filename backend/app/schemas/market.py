@@ -66,8 +66,8 @@ class TickerPrice(BaseModel):
     # Tracks where this data actually came from so API consumers and the UI
     # can be transparent about it — Binance is frequently geo-blocked (HTTP
     # 451) from Railway's hosting IPs, so responses may fall back to
-    # CoinGecko (real data, alternative source) or fully simulated mock data.
-    data_source: Literal["binance", "coingecko", "mock"] = "binance"
+    # CoinGecko (real data, alternative source).
+    data_source: Literal["binance", "coingecko"] = "binance"
 
     # Richer market data (populated when available, e.g. from CoinGecko).
     market_cap: Optional[float] = None

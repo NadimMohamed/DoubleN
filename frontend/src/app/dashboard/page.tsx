@@ -83,7 +83,7 @@ export default function DashboardPage() {
               <div>
                 <h1 className="text-xl font-bold text-white">Dashboard</h1>
                 <p className="text-sm text-slate mt-0.5">
-                  Market data from Binance, with CoinGecko/simulated fallback when unavailable
+                  Market data from Binance, with CoinGecko fallback when unavailable
                 </p>
               </div>
               {activeTicker && (
