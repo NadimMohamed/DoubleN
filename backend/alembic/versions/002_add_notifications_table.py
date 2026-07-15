@@ -18,7 +18,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create the notificationtype enum type
+    # Create the notificationtype enum type. This is the ONLY migration
+    # that should create this type (create_type=True + explicit .create()
+    # call with checkfirst=True). All later migrations that reference
+    # NotificationType must build their ENUM with create_type=False so
+    # they reuse the existing Postgres type instead of trying to create
+    # it again (which raises "type notificationtype already exists").
     notification_type_enum = postgresql.ENUM(
         'price_alert',
         'trend_alert',
@@ -32,13 +37,29 @@ def upgrade() -> None:
         create_type=True
     )
     notification_type_enum.create(op.get_bind(), checkfirst=True)
-    
+
+    # Separate ENUM instance for the column definition below with
+    # create_type=False, so that op.create_table doesn't also try to
+    # (re)create the type — it was already created explicitly above.
+    notification_type_column_enum = postgresql.ENUM(
+        'price_alert',
+        'trend_alert',
+        'signal_alert',
+        'position_alert',
+        'margin_alert',
+        'disconnection_alert',
+        'error_alert',
+        'info',
+        name='notificationtype',
+        create_type=False
+    )
+
     # Create notifications table
     op.create_table(
         'notifications',
         sa.Column('id', sa.String(36), nullable=False),
         sa.Column('user_id', sa.String(36), nullable=False),
-        sa.Column('type', notification_type_enum, nullable=False),
+        sa.Column('type', notification_type_column_enum, nullable=False),
         sa.Column('title', sa.String(255), nullable=False),
         sa.Column('message', sa.Text(), nullable=False),
         sa.Column('symbol', sa.String(20), nullable=True),
