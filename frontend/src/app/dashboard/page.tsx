@@ -88,13 +88,7 @@ export default function DashboardPage() {
                 </p>
               </div>
               {activeTicker && (
-                <LiveTicker
-                  symbol={activeSymbol}
-                  initialPrice={activeTicker.price}
-                  initialChangePct={activeTicker.price_change_pct}
-                  dataSource={activeTicker.data_source}
-                  showDetails
-                />
+                <LiveTicker symbol={activeSymbol} />
               )}
             </div>
 
