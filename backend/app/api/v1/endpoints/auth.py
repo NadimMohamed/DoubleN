@@ -81,14 +81,32 @@ async def refresh_token(data: RefreshRequest, db: AsyncSession = Depends(get_db)
     from jose import JWTError
     import uuid
 
+    token_preview = (data.refresh_token or "")[:50]
+    log.info("auth.refresh.attempt", token_preview=token_preview)
+
     try:
         payload = decode_token(data.refresh_token)
+    except JWTError as e:
+        log.warning("JWT validation failed", error=str(e), error_type=type(e).__name__, token_preview=token_preview)
+        raise AuthenticationError("Invalid token format")
+
+    log.info(
+        "auth.refresh.decoded",
+        payload={k: v for k, v in payload.items() if k not in ("sub",)},
+        sub_present="sub" in payload,
+        type_present="type" in payload,
+    )
+
+    try:
         if payload.get("type") != "refresh":
             raise ValueError("Not a refresh token")
         user_id = uuid.UUID(payload["sub"])
-    except (JWTError, ValueError, KeyError) as e:
-        log.warning("auth.refresh.invalid_token", error=str(e), error_type=type(e).__name__)
-        raise AuthenticationError("Invalid or expired refresh token")
+    except ValueError as e:
+        log.warning("Invalid token type", error=str(e), error_type=type(e).__name__, token_type=payload.get("type"))
+        raise AuthenticationError("Invalid token type")
+    except KeyError as e:
+        log.warning("Missing required token field", error=str(e), error_type=type(e).__name__)
+        raise AuthenticationError("Invalid token format")
 
     try:
         user = await AuthService.get_by_id(db, user_id)
