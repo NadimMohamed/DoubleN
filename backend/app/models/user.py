@@ -26,6 +26,7 @@ class User(Base):
     watchlist_items: Mapped[list["WatchlistItem"]] = relationship(
         "WatchlistItem", back_populates="user", cascade="all, delete-orphan"
     )
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email}>"

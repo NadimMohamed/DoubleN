@@ -1,0 +1,32 @@
+from sqlalchemy import Column, String, Text, Boolean, DateTime, Enum, JSON, ForeignKey, func
+from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
+import uuid
+from enum import Enum as PyEnum
+from app.db.session import Base
+
+class NotificationType(PyEnum):
+    PRICE_ALERT = "price_alert"
+    TREND_ALERT = "trend_alert"
+    SIGNAL_ALERT = "signal_alert"
+    POSITION_ALERT = "position_alert"
+    MARGIN_ALERT = "margin_alert"
+    DISCONNECTION_ALERT = "disconnection_alert"
+    ERROR_ALERT = "error_alert"
+    INFO = "info"
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("user.id"), nullable=False, index=True)
+    type = Column(Enum(NotificationType), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    symbol = Column(String(20), nullable=True, index=True)
+    data = Column(JSON, nullable=True)
+    is_read = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    
+    user = relationship("User", back_populates="notifications")
