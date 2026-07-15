@@ -34,23 +34,30 @@ class TestPasswordHashing:
 
 class TestJWT:
     def test_access_token_roundtrip(self):
-        token = create_access_token("user-123")
+        token, expires_at = create_access_token("user-123")
         payload = decode_token(token)
         assert payload["sub"] == "user-123"
         assert payload["type"] == "access"
+        assert payload["exp"] == expires_at
+
+    def test_access_token_returns_expiry(self):
+        token, expires_at = create_access_token("user-123")
+        assert isinstance(expires_at, int)
+        assert expires_at > 0
 
     def test_refresh_token_type(self):
-        token = create_refresh_token("user-456")
+        token, expires_at = create_refresh_token("user-456")
         payload = decode_token(token)
         assert payload["type"] == "refresh"
         assert payload["sub"] == "user-456"
+        assert payload["exp"] == expires_at
 
     def test_decode_invalid_token_raises(self):
         with pytest.raises(JWTError):
             decode_token("not.a.valid.token")
 
     def test_decode_tampered_token_raises(self):
-        token = create_access_token("user-789")
+        token, _ = create_access_token("user-789")
         tampered = token[:-5] + "XXXXX"
         with pytest.raises(JWTError):
             decode_token(tampered)
