@@ -62,6 +62,111 @@ class TechnicalIndicators:
         rsi = 100 - (100 / (1 + rs))
         return round(rsi, 2)
 
+    @staticmethod
+    def calculate_macd(klines: List[KlineData], fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
+        """
+        Calculate MACD (Moving Average Convergence Divergence).
+        Returns MACD, signal line, and histogram.
+        """
+        if len(klines) < slow:
+            return {"macd": None, "signal": None, "histogram": None}
+        
+        closes = [float(k.close) for k in klines]
+        
+        # Simple EMA approximation
+        def ema(data: List[float], period: int) -> float:
+            if len(data) < period:
+                return statistics.mean(data) if data else 0
+            multiplier = 2 / (period + 1)
+            ema_val = statistics.mean(data[:period])
+            for price in data[period:]:
+                ema_val = price * multiplier + ema_val * (1 - multiplier)
+            return ema_val
+        
+        ema12 = ema(closes, fast)
+        ema26 = ema(closes, slow)
+        macd_line = ema12 - ema26
+        
+        # Signal line is EMA of MACD
+        macd_values = []
+        for i in range(slow, len(closes)):
+            ema12 = ema(closes[:i+1], fast)
+            ema26 = ema(closes[:i+1], slow)
+            macd_values.append(ema12 - ema26)
+        
+        signal_line = ema(macd_values, signal) if macd_values else macd_line
+        histogram = macd_line - signal_line
+        
+        return {
+            "macd": round(macd_line, 4),
+            "signal": round(signal_line, 4),
+            "histogram": round(histogram, 4),
+            "interpretation": "bullish" if histogram > 0 else "bearish"
+        }
+
+    @staticmethod
+    def calculate_bollinger_bands(klines: List[KlineData], period: int = 20, std_dev_multiplier: float = 2.0) -> dict:
+        """
+        Calculate Bollinger Bands: middle band (MA), upper, and lower bands.
+        """
+        if len(klines) < period:
+            return {"upper": None, "middle": None, "lower": None, "bandwidth": None}
+        
+        closes = [float(k.close) for k in klines[-period:]]
+        middle = statistics.mean(closes)
+        
+        # Calculate standard deviation
+        variance = sum((x - middle) ** 2 for x in closes) / len(closes)
+        std_dev = variance ** 0.5
+        
+        upper = middle + (std_dev * std_dev_multiplier)
+        lower = middle - (std_dev * std_dev_multiplier)
+        bandwidth = ((upper - lower) / middle * 100) if middle else 0
+        
+        # Calculate position within bands (0-1, where 0 = at lower, 1 = at upper)
+        current_price = closes[-1]
+        if upper == lower:
+            position = 0.5
+        else:
+            position = (current_price - lower) / (upper - lower)
+        
+        return {
+            "upper": round(upper, 2),
+            "middle": round(middle, 2),
+            "lower": round(lower, 2),
+            "bandwidth": round(bandwidth, 2),
+            "position": round(max(0, min(1, position)), 2),  # 0-1 range
+            "interpretation": "overbought" if position > 0.8 else "oversold" if position < 0.2 else "neutral"
+        }
+
+    @staticmethod
+    def calculate_stochastic(klines: List[KlineData], period: int = 14, smooth: int = 3) -> dict:
+        """
+        Calculate Stochastic Oscillator.
+        Measures momentum and trend strength.
+        """
+        if len(klines) < period:
+            return {"k": None, "d": None}
+        
+        recent = klines[-period:]
+        highs = [float(k.high) for k in recent]
+        lows = [float(k.low) for k in recent]
+        closes = [float(k.close) for k in recent]
+        
+        highest_high = max(highs)
+        lowest_low = min(lows)
+        current_close = closes[-1]
+        
+        if highest_high == lowest_low:
+            k_percent = 50.0
+        else:
+            k_percent = ((current_close - lowest_low) / (highest_high - lowest_low)) * 100
+        
+        return {
+            "k": round(k_percent, 2),
+            "interpretation": "overbought" if k_percent > 80 else "oversold" if k_percent < 20 else "neutral"
+        }
+
 class SupportResistance:
     @staticmethod
     def calculate_levels(klines: List[KlineData], period: int = 20) -> dict:
