@@ -1,22 +1,27 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional
+
 
 class TrendResponse(BaseModel):
     direction: str
     strength: float
+
 
 class SupportResistanceResponse(BaseModel):
     support: Optional[float] = None
     resistance: Optional[float] = None
     pivot: Optional[float] = None
 
+
 class IndicatorResponse(BaseModel):
     rsi: Optional[float] = None
+
 
 class SignalResponse(BaseModel):
     signal: str
     confidence: float
     reasoning: str
+
 
 class RiskManagementResponse(BaseModel):
     entry_price: float
@@ -25,6 +30,7 @@ class RiskManagementResponse(BaseModel):
     take_profit_3x: float
     position_size: Optional[float] = None
     risk_amount: Optional[float] = None
+
 
 class TradeAnalysisResponse(BaseModel):
     symbol: str
