@@ -1,7 +1,10 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Maximize2 } from 'lucide-react'
 import { marketApi } from '@/lib/api'
+import { TimeframeSelector } from '@/components/charts/TimeframeSelector'
+import { IndicatorOverlay } from '@/components/charts/IndicatorOverlay'
 import type { KlineData } from '@/types'
 
 interface ChartProps {
@@ -10,13 +13,45 @@ interface ChartProps {
   height?: number
 }
 
-const INTERVALS = ['1m','5m','15m','1h','4h','1d']
-
 export function TradingChart({ symbol, interval: defaultInterval = '1h', height = 400 }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<any>(null)
   const candleSeriesRef = useRef<any>(null)
   const [activeInterval, setActiveInterval] = useState(defaultInterval)
+  const [enabledIndicators, setEnabledIndicators] = useState<Set<string>>(new Set(['sma20']))
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  const toggleIndicator = (id: string) => {
+    setEnabledIndicators((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleFullscreen = () => {
+    if (!wrapperRef.current) return
+    if (!document.fullscreenElement) {
+      wrapperRef.current.requestFullscreen?.()
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen?.()
+      setIsFullscreen(false)
+    }
+  }
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
 
   const { data: klines, isLoading } = useQuery({
     queryKey: ['klines', symbol, activeInterval],
@@ -108,35 +143,41 @@ export function TradingChart({ symbol, interval: defaultInterval = '1h', height 
   }, [klines])
 
   return (
-    <div className="card flex flex-col overflow-hidden">
+    <div ref={wrapperRef} className="card flex flex-col overflow-hidden bg-panel">
       {/* Chart toolbar */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-panel-border flex-shrink-0">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-panel-border flex-shrink-0 gap-4">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-sm font-semibold text-white">{symbol.replace('USDT', '/USDT')}</span>
           <span className="text-xs text-slate">Candlestick</span>
         </div>
-        <div className="flex items-center gap-1">
-          {INTERVALS.map((iv) => (
-            <button key={iv} onClick={() => setActiveInterval(iv)}
-              className={`text-xs px-2 py-1 rounded transition-colors font-medium ${
-                iv === activeInterval
-                  ? 'bg-blue/20 text-blue'
-                  : 'text-slate hover:text-white'
-              }`}>
-              {iv}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <TimeframeSelector value={activeInterval} onChange={setActiveInterval} />
+          <button
+            onClick={toggleFullscreen}
+            className="p-2 rounded-lg text-slate hover:text-white hover:bg-panel-hover transition-colors"
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          >
+            <Maximize2 className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {/* Chart container */}
-      <div className="relative flex-1" style={{ height }}>
-        {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-panel z-10">
-            <div className="w-6 h-6 border-2 border-blue border-t-transparent rounded-full animate-spin" />
-          </div>
-        )}
-        <div ref={containerRef} style={{ width: '100%', height }} />
+      {/* Chart body: sidebar + chart */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <div className="w-48 flex-shrink-0 border-r border-panel-border p-3">
+          <IndicatorOverlay enabled={enabledIndicators} onToggle={toggleIndicator} />
+        </div>
+
+        {/* Chart container */}
+        <div className="relative flex-1" style={{ height }}>
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-panel z-10">
+              <div className="w-6 h-6 border-2 border-blue border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          <div ref={containerRef} style={{ width: '100%', height }} />
+        </div>
       </div>
     </div>
   )
