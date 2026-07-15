@@ -1,8 +1,7 @@
-'use client'
 import type { ReactNode } from 'react'
 import './globals.css'
 import { Providers } from './providers'
-import { useAuthInit } from '@/hooks/useAuthInit'
+import AuthWrapper from './auth-wrapper'
 
 export const metadata = {
   title: { default: 'Double N Trading', template: '%s | Double N Trading' },
@@ -15,17 +14,12 @@ export const viewport = {
   themeColor: '#0A1628',
 }
 
-function AuthInitWrapper({ children }: { children: ReactNode }) {
-  useAuthInit()
-  return <>{children}</>
-}
-
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
       <body className="bg-navy text-white antialiased font-inter">
         <Providers>
-          <AuthInitWrapper>{children}</AuthInitWrapper>
+          <AuthWrapper>{children}</AuthWrapper>
         </Providers>
       </body>
     </html>
