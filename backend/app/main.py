@@ -180,17 +180,34 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+
+# Get frontend URL from environment or use default
+frontend_origins = [
+    "https://dn-frontend-production-43b8.up.railway.app",
+    "https://doublen-production.up.railway.app",
+]
+
+# Add localhost for development if not production
+if settings.APP_ENV != "production":
+    frontend_origins.extend([
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=False,  # Required when allow_origins=["*"]
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=frontend_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Content-Type", "Authorization"],
+    max_age=3600,
+    expose_headers=["X-Request-ID"],
 )
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"],  # Allow all hosts
+    allowed_hosts=settings.ALLOWED_HOSTS,
 )
 
 app.middleware("http")(rate_limit_middleware)
