@@ -5,42 +5,11 @@ import uuid
 from datetime import datetime
 from app.db.session import Base
 
-class Position(Base):
-    __tablename__ = "positions"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
-    )
-    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    quantity: Mapped[float] = mapped_column(Float, nullable=False)
-    entry_price: Mapped[float] = mapped_column(Float, nullable=False)
-    current_price: Mapped[float] = mapped_column(Float, nullable=False)
-    stop_loss: Mapped[float] = mapped_column(Float, nullable=True)
-    take_profit: Mapped[float] = mapped_column(Float, nullable=True)
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-    def __repr__(self) -> str:
-        return f"<Position {self.symbol} {self.quantity}@{self.entry_price}>"
-
-    @property
-    def pnl(self) -> float:
-        return (self.current_price - self.entry_price) * self.quantity
-
-    @property
-    def pnl_percentage(self) -> float:
-        if self.entry_price == 0:
-            return 0.0
-        return ((self.current_price - self.entry_price) / self.entry_price) * 100
-
-    @property
-    def value(self) -> float:
-        return self.current_price * self.quantity
+# NOTE: The original simple `Position` model that used to live in this file
+# has been superseded by the richer position-management model defined in
+# app/models/position.py (Phase 14B-backend), which owns the "positions"
+# table. It was unused outside of app/models/__init__.py, so it was removed
+# from here to avoid a duplicate-table mapping conflict.
 
 class Trade(Base):
     __tablename__ = "trades"
