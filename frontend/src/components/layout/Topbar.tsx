@@ -1,6 +1,6 @@
 'use client'
-import { Bell } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import { NotificationCenter } from '@/components/notifications/NotificationCenter'
 
 export function Topbar() {
   const { user } = useAuthStore()
@@ -14,9 +14,7 @@ export function Topbar() {
         <span className="text-xs text-slate hidden sm:block">Binance market data</span>
       </div>
       <div className="flex items-center gap-2">
-        <button className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-panel-hover text-slate hover:text-white transition-colors">
-          <Bell className="w-4 h-4" />
-        </button>
+        <NotificationCenter />
         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue to-emerald flex items-center justify-center text-xs font-bold text-white">
           {user?.username?.[0]?.toUpperCase() ?? 'U'}
         </div>
