@@ -82,13 +82,16 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-xl font-bold text-white">Dashboard</h1>
-                <p className="text-sm text-slate mt-0.5">Live market data from Binance</p>
+                <p className="text-sm text-slate mt-0.5">
+                  Market data from Binance, with CoinGecko/simulated fallback when unavailable
+                </p>
               </div>
               {activeTicker && (
                 <LiveTicker
                   symbol={activeSymbol}
                   initialPrice={activeTicker.price}
                   initialChangePct={activeTicker.price_change_pct}
+                  dataSource={activeTicker.data_source}
                   showDetails
                 />
               )}

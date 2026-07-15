@@ -34,7 +34,14 @@ def _validate_symbol(symbol: str) -> str:
 @router.get(
     "/ticker/{symbol}",
     response_model=TickerPrice,
-    summary="Get live 24h ticker for a symbol (from Binance)",
+    summary="Get 24h ticker (from Binance, CoinGecko, or cache)",
+    description=(
+        "Returns ticker data from Binance if available, falls back to "
+        "CoinGecko when Binance is unreachable (e.g. geo-blocked from the "
+        "hosting environment), then falls back further to stale cache or "
+        "simulated mock data. Check the 'data_source' field on the response "
+        "to see which origin actually served the data."
+    ),
 )
 async def get_ticker(response: Response, symbol: str = Path(..., description="e.g. BTCUSDT")):
     symbol = _validate_symbol(symbol)
@@ -46,7 +53,7 @@ async def get_ticker(response: Response, symbol: str = Path(..., description="e.
             "market.ticker.fallback_to_mock",
             symbol=symbol,
             error=str(e),
-            msg="Binance API unavailable, falling back to mock ticker data",
+            msg="Binance/CoinGecko unavailable, falling back to mock ticker data",
         )
         try:
             return binance_client.get_mock_ticker(symbol)
@@ -58,7 +65,12 @@ async def get_ticker(response: Response, symbol: str = Path(..., description="e.
 @router.get(
     "/tickers",
     response_model=list[TickerPrice],
-    summary="Get live tickers for multiple symbols",
+    summary="Get tickers for multiple symbols (from Binance, CoinGecko, or cache)",
+    description=(
+        "Returns ticker data from Binance if available, falling back to "
+        "CoinGecko and then mock data per-symbol. Check each item's "
+        "'data_source' field to see which origin served that entry."
+    ),
 )
 async def get_tickers(
     response: Response,
