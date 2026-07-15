@@ -1,113 +1,40 @@
 'use client'
-import React, { useEffect, useRef, useState, useMemo } from 'react'
-import { useTickerStream } from '@/hooks/useTickerStream'
-import { formatPrice, formatPct } from '@/lib/utils'
-import { cn } from '@/lib/utils'
+import { useWebSocket } from '@/hooks/useWebSocket'
+import { WebSocketMessage } from '@/lib/websocket'
 import { TrendingUp, TrendingDown } from 'lucide-react'
+import { cn, formatPrice, formatPct } from '@/lib/utils'
 
-interface LiveTickerProps {
-  symbol: string
-  initialPrice?: number | null
-  initialChangePct?: number | null
-  showDetails?: boolean
-  // Origin of the REST-fetched price data (Binance is frequently
-  // geo-blocked from the hosting environment, so this may reflect a
-  // CoinGecko or fully simulated fallback instead).
-  dataSource?: 'binance' | 'coingecko' | 'mock'
-}
+export function LiveTicker({ symbol }: { symbol: string }) {
+  const { isConnected, lastUpdate } = useWebSocket(symbol)
 
-const DATA_SOURCE_LABEL: Record<string, string> = {
-  binance: '🟢 Live',
-  coingecko: '🟡 Alternative',
-  mock: '🔵 Simulated',
-}
+  if (!lastUpdate) {
+    return <div className="text-slate">Connecting...</div>
+  }
 
-function LiveTickerComponent({
-  symbol,
-  initialPrice,
-  initialChangePct,
-  showDetails = false,
-  dataSource,
-}: LiveTickerProps) {
-  const { price, high, low, volume, isConnected } = useTickerStream({ symbol })
-  const [flash, setFlash] = useState<'up' | 'down' | null>(null)
-  const prevPrice = useRef<number | null>(null)
-
-  const displayPrice = price ?? initialPrice
-  const changePct = initialChangePct
-  const isPositive = useMemo(() => (changePct ?? 0) >= 0, [changePct])
-
-  // Flash animation on price change
-  useEffect(() => {
-    if (price !== null && prevPrice.current !== null) {
-      setFlash(price > prevPrice.current ? 'up' : 'down')
-      const t = setTimeout(() => setFlash(null), 600)
-      return () => clearTimeout(t)
-    }
-    prevPrice.current = price
-  }, [price])
+  const priceChange = lastUpdate.price_change_pct || 0
+  const isPositive = priceChange >= 0
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        {/* Live indicator */}
-        <div
-          className={cn(
-            'w-1.5 h-1.5 rounded-full flex-shrink-0',
-            isConnected ? 'bg-emerald animate-pulse' : 'bg-slate'
-          )}
-        />
-
-        {/* Data source indicator — transparency about origin of the price */}
-        {dataSource && (
-          <span className="text-xs text-slate-400" title={`Data source: ${dataSource}`}>
-            {DATA_SOURCE_LABEL[dataSource] ?? dataSource}
-          </span>
-        )}
-
-        {/* Price */}
-        <span
-          className={cn(
-            'text-2xl font-bold tabular-nums transition-colors duration-300',
-            flash === 'up' && 'text-emerald',
-            flash === 'down' && 'text-danger',
-            !flash && 'text-white'
-          )}
-        >
-          {formatPrice(displayPrice)}
-        </span>
-
-        {/* 24h change */}
-        {changePct !== null && changePct !== undefined && (
-          <div
-            className={cn(
-              'flex items-center gap-0.5 text-sm font-medium',
-              isPositive ? 'text-emerald' : 'text-danger'
-            )}
-          >
-            {isPositive ? (
-              <TrendingUp className="w-3.5 h-3.5" />
-            ) : (
-              <TrendingDown className="w-3.5 h-3.5" />
-            )}
-            {formatPct(changePct)}
-          </div>
-        )}
+    <div className="flex items-center gap-4">
+      <div className="flex-1">
+        <div className="text-xs text-slate uppercase tracking-wider mb-1">Live Price</div>
+        <div className="text-3xl font-bold text-white">
+          ${formatPrice(lastUpdate.price)}
+        </div>
       </div>
 
-      {showDetails && (
-        <div className="flex items-center gap-4 text-xs text-slate">
-          {high && <span>H: <span className="text-emerald">{formatPrice(high)}</span></span>}
-          {low && <span>L: <span className="text-danger">{formatPrice(low)}</span></span>}
-          {volume && (
-            <span>
-              Vol: <span className="text-white">{volume.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
-            </span>
-          )}
-        </div>
-      )}
+      <div className={cn(
+        'flex items-center gap-1 px-3 py-2 rounded-lg',
+        isPositive ? 'bg-emerald/20 text-emerald' : 'bg-danger/20 text-danger'
+      )}>
+        {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+        <span className="text-sm font-semibold">{formatPct(priceChange)}</span>
+      </div>
+
+      <div className={cn(
+        'w-2 h-2 rounded-full',
+        isConnected ? 'bg-emerald' : 'bg-danger'
+      )} title={isConnected ? 'Connected' : 'Disconnected'} />
     </div>
   )
 }
-
-export const LiveTicker = React.memo(LiveTickerComponent)
