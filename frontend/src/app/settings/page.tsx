@@ -40,7 +40,6 @@ export default function SettingsPage() {
           <Topbar />
           <main className="flex-1 overflow-y-auto p-6 space-y-6">
             
-            {/* Header */}
             <div>
               <h1 className="text-2xl font-bold text-white flex items-center gap-2">
                 <SettingsIcon className="w-6 h-6" />
@@ -50,7 +49,6 @@ export default function SettingsPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Notifications */}
               <div className="card p-6 lg:col-span-2">
                 <div className="flex items-center gap-2 mb-4">
                   <Bell className="w-5 h-5 text-blue" />
@@ -78,9 +76,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Display & Data */}
               <div className="space-y-6">
-                {/* Display */}
                 <div className="card p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <Palette className="w-5 h-5 text-blue" />
@@ -97,7 +93,6 @@ export default function SettingsPage() {
                   </label>
                 </div>
 
-                {/* Refresh Interval */}
                 <div className="card p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <Clock className="w-5 h-5 text-blue" />
@@ -120,7 +115,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Security */}
               <div className="card p-6 lg:col-span-2">
                 <div className="flex items-center gap-2 mb-4">
                   <Lock className="w-5 h-5 text-blue" />
@@ -146,7 +140,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Save Button */}
               <div className="lg:col-span-3 flex justify-end">
                 <button
                   onClick={handleSave}
