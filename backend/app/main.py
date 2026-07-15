@@ -13,7 +13,6 @@ import structlog
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.schemas.health import HealthResponse
-from app.websockets.routes import router as ws_router
 from app.db.session import engine, Base
 
 log = structlog.get_logger(__name__)
@@ -193,7 +192,6 @@ app.add_middleware(
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 app.include_router(api_router)
-app.include_router(ws_router)
 
 
 # ── Health check ───────────────────────────────────────────────────────────────
