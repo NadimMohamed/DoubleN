@@ -34,7 +34,7 @@ class Settings(BaseSettings):
 
     # Allowed hosts for TrustedHostMiddleware
     ALLOWED_HOSTS: list = Field(
-        default=["doublen-production.up.railway.app", "localhost", "127.0.0.1"],
+        default=["*"],
         description="Allowed hosts list"
     )
 
