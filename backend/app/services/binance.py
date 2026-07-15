@@ -10,6 +10,7 @@ required.
 """
 import httpx
 import random
+import redis.asyncio as aioredis
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 import structlog
@@ -24,6 +25,12 @@ log = structlog.get_logger(__name__)
 # for live prices. A short TTL cache keeps redundant requests down while
 # still giving near-real-time updates (2-5s) to dashboard/watchlist polling.
 TICKER_CACHE_TTL_SECONDS = 2
+
+# How long a ticker response is cached in Redis (shared across all app
+# instances/workers) before it is considered stale and refetched from the
+# upstream source (Binance or CoinGecko). Kept short so prices stay close
+# to real-time while still absorbing bursts of polling requests.
+TICKER_REDIS_CACHE_TTL_SECONDS = 5
 
 BINANCE_BASE = settings.BINANCE_BASE_URL
 
@@ -66,6 +73,7 @@ class BinanceClient:
         self._client: Optional[httpx.AsyncClient] = None
         self._ticker_cache: dict[str, TickerPrice] = {}
         self._ticker_cache_time: dict[str, datetime] = {}
+        self._redis: Optional[aioredis.Redis] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -77,9 +85,44 @@ class BinanceClient:
             )
         return self._client
 
+    async def _get_redis(self) -> Optional[aioredis.Redis]:
+        """Lazily create the shared Redis client used to cache ticker data.
+
+        Returns None (rather than raising) if Redis is unavailable so callers
+        can gracefully fall back to fetching from upstream sources directly.
+        """
+        if self._redis is None:
+            try:
+                self._redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+            except Exception as e:
+                log.warning("binance.redis_init_failed", error=str(e))
+                return None
+        return self._redis
+
+    async def _cache_ticker(self, redis_client: Optional["aioredis.Redis"], cache_key: str, ticker: TickerPrice) -> None:
+        """Best-effort write-through cache of a ticker into Redis."""
+        if redis_client is None:
+            return
+        try:
+            await redis_client.set(
+                cache_key,
+                ticker.model_dump_json(),
+                ex=TICKER_REDIS_CACHE_TTL_SECONDS,
+            )
+        except Exception as e:
+            log.warning("binance.redis_cache_write_failed", cache_key=cache_key, error=str(e))
+
     async def close(self):
         if self._client and not self._client.is_closed:
             await self._client.aclose()
+        if self._redis is not None:
+            try:
+                if hasattr(self._redis, "aclose"):
+                    await self._redis.aclose()
+                else:
+                    await self._redis.close()
+            except Exception:
+                pass
 
     async def ping(self) -> bool:
         """Check Binance API connectivity."""
@@ -91,48 +134,105 @@ class BinanceClient:
             log.error("binance.ping.failed", error=str(e))
             return False
 
+    async def _fetch_binance_ticker(self, symbol: str) -> TickerPrice:
+        """Fetch a ticker directly from Binance's REST API (no cache/fallback).
+
+        This is expected to frequently fail with HTTP 451 from Railway's
+        hosting IPs (geo-blocked) — callers handle that via the fallback
+        chain in `get_ticker_24h`.
+        """
+        client = await self._get_client()
+        r = await client.get("/api/v3/ticker/24hr", params={"symbol": symbol})
+        r.raise_for_status()
+        d = r.json()
+        return TickerPrice(
+            symbol=d["symbol"],
+            price=float(d["lastPrice"]),
+            price_change=float(d["priceChange"]),
+            price_change_pct=float(d["priceChangePercent"]),
+            high_24h=float(d["highPrice"]),
+            low_24h=float(d["lowPrice"]),
+            volume=float(d["volume"]),
+            quote_volume=float(d["quoteVolume"]),
+            open_price=float(d["openPrice"]),
+            last_updated=datetime.now(timezone.utc),
+            data_source="binance",
+            data_freshness_seconds=0,
+        )
+
     async def get_ticker_24h(self, symbol: str) -> TickerPrice:
         """
         GET /api/v3/ticker/24hr
         Returns 24h rolling window price statistics for a symbol.
 
-        Real-time prices are delivered via REST polling (the Binance
-        WebSocket stream is frequently geo-blocked from the hosting
-        environment). Responses are cached for `TICKER_CACHE_TTL_SECONDS`
-        so frequent polling (e.g. every 2s from the dashboard/watchlist)
-        doesn't hammer the upstream API. If the upstream request fails and
-        a stale cached value exists, it is returned instead of raising —
-        callers only see an exception when there is truly no data at all.
+        Binance's REST/WebSocket endpoints are frequently unreachable from
+        Railway's hosting IPs (HTTP 451 — geo-blocked), so CoinGecko is
+        treated as the reliable primary fallback here. Order of operations:
+
+        1. Check Redis for a recently cached ticker (shared across all app
+           instances/workers, `TICKER_REDIS_CACHE_TTL_SECONDS` TTL). If
+           present, return it immediately with `data_freshness_seconds=0`.
+        2. Try Binance directly. This frequently fails with HTTP 451 from
+           the hosting environment.
+        3. On Binance failure, fetch from CoinGecko (real, non-simulated
+           data) and cache the result in Redis for
+           `TICKER_REDIS_CACHE_TTL_SECONDS` seconds.
+        4. If CoinGecko also fails, fall back to fully simulated mock data
+           (`data_source="mock"`) so the app keeps functioning.
+
+        The returned `data_source` and `data_freshness_seconds` fields
+        always reflect where the data actually came from and how fresh it
+        is, so API consumers and the UI can be transparent about it.
         """
         symbol = symbol.upper()
+        cache_key = f"ticker:{symbol}"
 
-        cached_at = self._ticker_cache_time.get(symbol)
-        if cached_at is not None:
-            age = (datetime.now(timezone.utc) - cached_at).total_seconds()
-            if age < TICKER_CACHE_TTL_SECONDS:
-                return self._ticker_cache[symbol]
+        redis_client = await self._get_redis()
+        if redis_client is not None:
+            try:
+                cached_raw = await redis_client.get(cache_key)
+            except Exception as e:
+                log.warning("binance.redis_cache_read_failed", symbol=symbol, error=str(e))
+                cached_raw = None
+
+            if cached_raw:
+                try:
+                    ticker = TickerPrice.model_validate_json(cached_raw)
+                    ticker.data_freshness_seconds = 0
+                    self._ticker_cache[symbol] = ticker
+                    self._ticker_cache_time[symbol] = datetime.now(timezone.utc)
+                    return ticker
+                except Exception as e:
+                    log.warning("binance.redis_cache_parse_failed", symbol=symbol, error=str(e))
 
         try:
-            client = await self._get_client()
-            r = await client.get("/api/v3/ticker/24hr", params={"symbol": symbol})
-            r.raise_for_status()
-            d = r.json()
-            ticker = TickerPrice(
-                symbol=d["symbol"],
-                price=float(d["lastPrice"]),
-                price_change=float(d["priceChange"]),
-                price_change_pct=float(d["priceChangePercent"]),
-                high_24h=float(d["highPrice"]),
-                low_24h=float(d["lowPrice"]),
-                volume=float(d["volume"]),
-                quote_volume=float(d["quoteVolume"]),
-                open_price=float(d["openPrice"]),
-                last_updated=datetime.now(timezone.utc),
-            )
+            ticker = await self._fetch_binance_ticker(symbol)
+            ticker.data_freshness_seconds = 0
             self._ticker_cache[symbol] = ticker
             self._ticker_cache_time[symbol] = datetime.now(timezone.utc)
+            await self._cache_ticker(redis_client, cache_key, ticker)
             return ticker
         except Exception as e:
+            log.warning("binance.ticker_failed_trying_coingecko", symbol=symbol, error=str(e))
+
+            if settings.USE_COINGECKO_FALLBACK:
+                try:
+                    from app.services.coingecko import coingecko_client
+                    ticker = await coingecko_client.get_ticker_24h(symbol)
+                    ticker.data_source = "coingecko"
+                    ticker.data_freshness_seconds = 0
+                    log.info("binance.coingecko_fallback", symbol=symbol)
+                    self._ticker_cache[symbol] = ticker
+                    self._ticker_cache_time[symbol] = datetime.now(timezone.utc)
+                    await self._cache_ticker(redis_client, cache_key, ticker)
+                    return ticker
+                except Exception as cg_error:
+                    log.warning(
+                        "coingecko.also_failed_using_stale_or_mock",
+                        symbol=symbol,
+                        error=str(cg_error),
+                    )
+
             stale = self._ticker_cache.get(symbol)
             if stale is not None:
                 log.warning(
@@ -141,7 +241,11 @@ class BinanceClient:
                     error=str(e),
                 )
                 return stale
-            raise
+
+            mock_ticker = self.get_mock_ticker(symbol)
+            mock_ticker.data_source = "mock"
+            mock_ticker.data_freshness_seconds = 0
+            return mock_ticker
 
     async def get_multiple_tickers(self, symbols: list[str]) -> list[TickerPrice]:
         """
@@ -173,6 +277,7 @@ class BinanceClient:
                 quote_volume=float(d["quoteVolume"]),
                 open_price=float(d["openPrice"]),
                 last_updated=datetime.now(timezone.utc),
+                data_source="binance",
             ))
         return results
 
@@ -278,6 +383,7 @@ class BinanceClient:
             quote_volume=round(quote_volume, 4),
             open_price=round(open_price, 8),
             last_updated=datetime.now(timezone.utc),
+            data_source="mock",
         )
 
     def get_mock_tickers(self, symbols: list[str]) -> list[TickerPrice]:

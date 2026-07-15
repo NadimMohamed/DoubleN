@@ -34,7 +34,14 @@ def _validate_symbol(symbol: str) -> str:
 @router.get(
     "/ticker/{symbol}",
     response_model=TickerPrice,
-    summary="Get live 24h ticker for a symbol (from Binance)",
+    summary="Get 24h ticker (from Binance, CoinGecko, or cache)",
+    description=(
+        "Returns ticker data from Binance if available, falls back to "
+        "CoinGecko when Binance is unreachable (e.g. geo-blocked from the "
+        "hosting environment), then falls back further to stale cache or "
+        "simulated mock data. Check the 'data_source' field on the response "
+        "to see which origin actually served the data."
+    ),
 )
 async def get_ticker(response: Response, symbol: str = Path(..., description="e.g. BTCUSDT")):
     symbol = _validate_symbol(symbol)
@@ -46,19 +53,20 @@ async def get_ticker(response: Response, symbol: str = Path(..., description="e.
             "market.ticker.fallback_to_mock",
             symbol=symbol,
             error=str(e),
-            msg="Binance API unavailable, falling back to mock ticker data",
+            msg="Binance/CoinGecko unavailable, falling back to mock ticker data",
         )
-        try:
-            return binance_client.get_mock_ticker(symbol)
-        except Exception as mock_err:
-            log.error("market.ticker.mock_failed", symbol=symbol, error=str(mock_err))
-            raise HTTPException(status_code=502, detail="Unable to retrieve ticker data") from mock_err
+        return binance_client.get_mock_ticker(symbol)
 
 
 @router.get(
     "/tickers",
     response_model=list[TickerPrice],
-    summary="Get live tickers for multiple symbols",
+    summary="Get tickers for multiple symbols (from Binance, CoinGecko, or cache)",
+    description=(
+        "Returns ticker data from Binance if available, falling back to "
+        "CoinGecko and then mock data per-symbol. Check each item's "
+        "'data_source' field to see which origin served that entry."
+    ),
 )
 async def get_tickers(
     response: Response,
@@ -80,11 +88,7 @@ async def get_tickers(
             error=str(e),
             msg="Binance API unavailable, falling back to mock ticker data",
         )
-        try:
-            return binance_client.get_mock_tickers(syms)
-        except Exception as mock_err:
-            log.error("market.tickers.mock_failed", symbols=syms, error=str(mock_err))
-            raise HTTPException(status_code=502, detail="Unable to retrieve ticker data") from mock_err
+        return binance_client.get_mock_tickers(syms)
 
 
 @router.get(
@@ -113,11 +117,7 @@ async def get_klines(
             error=str(e),
             msg="Binance API unavailable, falling back to mock kline data",
         )
-        try:
-            return binance_client.get_mock_klines(symbol, interval, limit)
-        except Exception as mock_err:
-            log.error("market.klines.mock_failed", symbol=symbol, error=str(mock_err))
-            raise HTTPException(status_code=502, detail="Unable to retrieve kline data") from mock_err
+        return binance_client.get_mock_klines(symbol, interval, limit)
 
 
 @router.get(
@@ -142,11 +142,7 @@ async def get_order_book(
             error=str(e),
             msg="Binance API unavailable, falling back to mock order book data",
         )
-        try:
-            return binance_client.get_mock_order_book(symbol, limit)
-        except Exception as mock_err:
-            log.error("market.orderbook.mock_failed", symbol=symbol, error=str(mock_err))
-            raise HTTPException(status_code=502, detail="Unable to retrieve order book data") from mock_err
+        return binance_client.get_mock_order_book(symbol, limit)
 
 
 @router.get(
