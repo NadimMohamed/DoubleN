@@ -35,8 +35,19 @@ export function useTickerStream({ symbol, enabled = true }: UseTickerStreamOptio
   const connect = useCallback(() => {
     if (!enabled || !mountedRef.current) return
 
-    const url = `${WS_URL}/ws/ticker/${symbol.toUpperCase()}`
-    const ws = new WebSocket(url)
+    // Get JWT token from localStorage
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+
+    if (!token) {
+      console.warn('WebSocket: no auth token available, cannot connect')
+      return
+    }
+
+    // Build URL with token parameter
+    const url = new URL(`${WS_URL}/ws/ticker/${symbol.toUpperCase()}`)
+    url.searchParams.append('token', token)
+
+    const ws = new WebSocket(url.toString())
     wsRef.current = ws
 
     ws.onopen = () => {
@@ -73,9 +84,16 @@ export function useTickerStream({ symbol, enabled = true }: UseTickerStreamOptio
       } catch {}
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       if (!mountedRef.current) return
       setState((s) => ({ ...s, isConnected: false }))
+
+      // Check for auth failure (1008 = policy violation) — don't reconnect
+      if (event.code === 1008) {
+        console.warn('WebSocket auth failed:', event.reason)
+        return
+      }
+
       // Exponential backoff, cap at 10s (reduced from 30s)
       reconnectTimer.current = setTimeout(() => {
         if (mountedRef.current) {
