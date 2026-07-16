@@ -42,13 +42,19 @@ def upgrade() -> None:
     # The "positions" table may already exist from a previous deployment
     # where the migration ran but the alembic_version table wasn't updated.
     # Guard table/index creation so this migration can be re-run safely.
+    #
+    # NOTE: inlining postgresql.ENUM(..., create_type=False) columns directly
+    # in op.create_table() has proven unreliable - the enum types exist in
+    # the database, but SQLAlchemy/Alembic sometimes fails to emit the
+    # column definitions for them in the CREATE TABLE statement. To avoid
+    # this, the table is created WITHOUT the enum columns, and the "side"
+    # and "status" columns are added afterwards with op.add_column().
     if not inspector.has_table('positions'):
         op.create_table(
             'positions',
             sa.Column('id', sa.String(36), nullable=False),
             sa.Column('user_id', sa.String(36), nullable=False),
             sa.Column('symbol', sa.String(20), nullable=False),
-            sa.Column('side', postgresql.ENUM('long', 'short', name='positionside', create_type=False), nullable=False),
             sa.Column('quantity', sa.Float(), nullable=False),
             sa.Column('entry_price', sa.Float(), nullable=False),
             sa.Column('current_price', sa.Float(), nullable=False),
@@ -58,12 +64,44 @@ def upgrade() -> None:
             sa.Column('unrealized_pnl', sa.Float(), nullable=True, server_default='0.0'),
             sa.Column('unrealized_pnl_pct', sa.Float(), nullable=True, server_default='0.0'),
             sa.Column('realized_pnl', sa.Float(), nullable=True),
-            sa.Column('status', postgresql.ENUM('open', 'closed', name='positionstatus', create_type=False), nullable=True, server_default='open'),
             sa.Column('opened_at', sa.DateTime(timezone=True), nullable=True, server_default=sa.func.now()),
             sa.Column('closed_at', sa.DateTime(timezone=True), nullable=True),
             sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
             sa.PrimaryKeyConstraint('id'),
         )
+
+    # Add the enum-typed columns separately. This sidesteps the
+    # create_table()+inline-ENUM limitation described above.
+    existing_columns = {
+        column['name'] for column in inspector.get_columns('positions')
+    } if inspector.has_table('positions') else set()
+
+    if 'side' not in existing_columns:
+        op.add_column(
+            'positions',
+            sa.Column(
+                'side',
+                postgresql.ENUM('long', 'short', name='positionside', create_type=False),
+                nullable=False,
+                server_default='long',
+            ),
+        )
+        op.alter_column('positions', 'side', server_default=None)
+
+    if 'status' not in existing_columns:
+        op.add_column(
+            'positions',
+            sa.Column(
+                'status',
+                postgresql.ENUM('open', 'closed', name='positionstatus', create_type=False),
+                nullable=True,
+                server_default='open',
+            ),
+        )
+
+    # Refresh the inspector's cached column/index metadata now that the
+    # table (and its enum columns) definitely exist.
+    inspector = sa.inspect(bind)
 
     existing_indexes = {
         index['name'] for index in inspector.get_indexes('positions')
