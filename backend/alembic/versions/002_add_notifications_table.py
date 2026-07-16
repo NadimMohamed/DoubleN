@@ -7,6 +7,7 @@ Create Date: 2026-07-16 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 
 
@@ -18,6 +19,12 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # This migration is guarded to be safely re-runnable: the table (and
+    # possibly its indexes/enum type) may already exist from a prior
+    # migration attempt that failed to record its revision.
+    bind = op.get_bind()
+    inspector = inspect(bind)
+
     # Create the notificationtype enum type. This is the ONLY migration
     # that should create this type (create_type=True + explicit .create()
     # call with checkfirst=True). All later migrations that reference
@@ -55,28 +62,37 @@ def upgrade() -> None:
     )
 
     # Create notifications table
-    op.create_table(
-        'notifications',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('type', notification_type_column_enum, nullable=False),
-        sa.Column('title', sa.String(255), nullable=False),
-        sa.Column('message', sa.Text(), nullable=False),
-        sa.Column('symbol', sa.String(20), nullable=True),
-        sa.Column('data', postgresql.JSON(astext_type=sa.Text()), nullable=True),
-        sa.Column('is_read', sa.Boolean(), nullable=False, server_default='false'),
-        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
-        sa.PrimaryKeyConstraint('id')
-    )
-    
+    if 'notifications' not in inspector.get_table_names():
+        op.create_table(
+            'notifications',
+            sa.Column('id', sa.String(36), nullable=False),
+            sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column('type', notification_type_column_enum, nullable=False),
+            sa.Column('title', sa.String(255), nullable=False),
+            sa.Column('message', sa.Text(), nullable=False),
+            sa.Column('symbol', sa.String(20), nullable=True),
+            sa.Column('data', postgresql.JSON(astext_type=sa.Text()), nullable=True),
+            sa.Column('is_read', sa.Boolean(), nullable=False, server_default='false'),
+            sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
+            sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+            sa.PrimaryKeyConstraint('id')
+        )
+
     # Create indexes
-    op.create_index('ix_notifications_user_id', 'notifications', ['user_id'])
-    op.create_index('ix_notifications_type', 'notifications', ['type'])
-    op.create_index('ix_notifications_symbol', 'notifications', ['symbol'])
-    op.create_index('ix_notifications_is_read', 'notifications', ['is_read'])
-    op.create_index('ix_notifications_created_at', 'notifications', ['created_at'])
+    existing_indexes = {index['name'] for index in inspector.get_indexes('notifications')} \
+        if 'notifications' in inspector.get_table_names() else set()
+
+    if 'ix_notifications_user_id' not in existing_indexes:
+        op.create_index('ix_notifications_user_id', 'notifications', ['user_id'])
+    if 'ix_notifications_type' not in existing_indexes:
+        op.create_index('ix_notifications_type', 'notifications', ['type'])
+    if 'ix_notifications_symbol' not in existing_indexes:
+        op.create_index('ix_notifications_symbol', 'notifications', ['symbol'])
+    if 'ix_notifications_is_read' not in existing_indexes:
+        op.create_index('ix_notifications_is_read', 'notifications', ['is_read'])
+    if 'ix_notifications_created_at' not in existing_indexes:
+        op.create_index('ix_notifications_created_at', 'notifications', ['created_at'])
 
 
 def downgrade() -> None:
