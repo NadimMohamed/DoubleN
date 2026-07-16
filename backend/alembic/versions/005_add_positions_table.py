@@ -21,23 +21,38 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
-    # Create the positionside enum type.
+    # Previous deployments may have created the positionside/positionstatus
+    # enum types with stale, uppercase labels (e.g. 'LONG', 'SHORT') because
+    # Python enums default to uppercasing member names. Since no columns
+    # reference these types yet at this point in the migration, it's safe
+    # to drop and recreate them with the correct lowercase labels.
+    enum_names = {enum['name'] for enum in inspector.get_enums()}
+
+    if 'positionside' in enum_names:
+        postgresql.ENUM(name='positionside').drop(bind, checkfirst=True)
+
+    if 'positionstatus' in enum_names:
+        postgresql.ENUM(name='positionstatus').drop(bind, checkfirst=True)
+
+    # Create the positionside enum type with the correct lowercase labels.
     position_side_enum = postgresql.ENUM(
         'long',
         'short',
         name='positionside',
         create_type=True,
     )
-    position_side_enum.create(bind, checkfirst=True)
+    position_side_enum.drop(bind, checkfirst=True)
+    position_side_enum.create(bind, checkfirst=False)
 
-    # Create the positionstatus enum type.
+    # Create the positionstatus enum type with the correct lowercase labels.
     position_status_enum = postgresql.ENUM(
         'open',
         'closed',
         name='positionstatus',
         create_type=True,
     )
-    position_status_enum.create(bind, checkfirst=True)
+    position_status_enum.drop(bind, checkfirst=True)
+    position_status_enum.create(bind, checkfirst=False)
 
     # The "positions" table may already exist from a previous deployment
     # where the migration ran but the alembic_version table wasn't updated.
