@@ -1,7 +1,6 @@
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timezone
 import uuid
 from app.db.session import Base
@@ -9,7 +8,7 @@ from app.db.session import Base
 class ExchangeConnection(Base):
     __tablename__ = "exchange_connections"
     
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     exchange = Column(String(50), nullable=False)  # "bingx", etc
     api_key_encrypted = Column(Text, nullable=False)  # Encrypted
