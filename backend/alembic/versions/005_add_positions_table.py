@@ -53,10 +53,27 @@ def upgrade() -> None:
         create_type=False,
     )
 
-    # The "positions" table may already exist from a previous deployment
-    # where the migration ran but the alembic_version table wasn't updated.
-    # Guard table/index creation so this migration can be re-run safely.
-    if not inspector.has_table('positions'):
+    # The "positions" table may already exist from a previous deployment,
+    # but earlier failed runs could have created it without all of its
+    # columns (e.g. "status"/"side" were defined via enum variables that
+    # never actually made it into CREATE TABLE). Simply checking
+    # `has_table('positions')` isn't enough to guard against that, so we
+    # explicitly check for the "status" column and rebuild the table if
+    # it's missing.
+    table_needs_creation = True
+    if inspector.has_table('positions'):
+        existing_columns = {
+            column['name'] for column in inspector.get_columns('positions')
+        }
+        if 'status' in existing_columns:
+            # Table already has the expected schema; nothing to do.
+            table_needs_creation = False
+        else:
+            # Incomplete table from a previous failed deployment. Drop it
+            # so we can recreate it with the full, correct schema.
+            op.drop_table('positions')
+
+    if table_needs_creation:
         op.create_table(
             'positions',
             sa.Column('id', sa.String(36), nullable=False),
@@ -78,6 +95,9 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
             sa.PrimaryKeyConstraint('id'),
         )
+
+    # Re-inspect after any drop/create so index checks see the current schema.
+    inspector = sa.inspect(bind)
 
     existing_indexes = {
         index['name'] for index in inspector.get_indexes('positions')
