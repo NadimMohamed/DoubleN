@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Enum, Integer
+from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Integer
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -20,7 +21,7 @@ class Position(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     symbol = Column(String(20), nullable=False, index=True)
-    side = Column(Enum(PositionSide), nullable=False)
+    side = Column(postgresql.ENUM('long', 'short', name='positionside', create_type=False), nullable=False)
     quantity = Column(Float, nullable=False)
     entry_price = Column(Float, nullable=False)
     current_price = Column(Float, nullable=False)
@@ -33,7 +34,7 @@ class Position(Base):
     unrealized_pnl_pct = Column(Float, default=0.0)
     realized_pnl = Column(Float, nullable=True)
 
-    status = Column(Enum(PositionStatus), default=PositionStatus.OPEN, index=True)
+    status = Column(postgresql.ENUM('open', 'closed', name='positionstatus', create_type=False), default=PositionStatus.OPEN, index=True)
     opened_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     closed_at = Column(DateTime(timezone=True), nullable=True)
 
