@@ -48,5 +48,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index('ix_exchange_connections_user_id', table_name='exchange_connections')
-    op.drop_table('exchange_connections')
+    bind = op.get_bind()
+    inspector = inspect(bind)
+
+    if 'exchange_connections' in inspector.get_table_names():
+        existing_indexes = {
+            ix['name'] for ix in inspector.get_indexes('exchange_connections')
+        }
+        if 'ix_exchange_connections_user_id' in existing_indexes:
+            op.drop_index('ix_exchange_connections_user_id', table_name='exchange_connections')
+
+        op.drop_table('exchange_connections')
