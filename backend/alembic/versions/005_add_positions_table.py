@@ -30,13 +30,6 @@ def upgrade() -> None:
     )
     position_side_enum.create(bind, checkfirst=True)
 
-    position_side_column_enum = postgresql.ENUM(
-        'long',
-        'short',
-        name='positionside',
-        create_type=False,
-    )
-
     # Create the positionstatus enum type.
     position_status_enum = postgresql.ENUM(
         'open',
@@ -45,13 +38,6 @@ def upgrade() -> None:
         create_type=True,
     )
     position_status_enum.create(bind, checkfirst=True)
-
-    position_status_column_enum = postgresql.ENUM(
-        'open',
-        'closed',
-        name='positionstatus',
-        create_type=False,
-    )
 
     # The "positions" table may already exist from a previous deployment
     # where the migration ran but the alembic_version table wasn't updated.
@@ -62,7 +48,7 @@ def upgrade() -> None:
             sa.Column('id', sa.String(36), nullable=False),
             sa.Column('user_id', sa.String(36), nullable=False),
             sa.Column('symbol', sa.String(20), nullable=False),
-            sa.Column('side', position_side_column_enum, nullable=False),
+            sa.Column('side', postgresql.ENUM('long', 'short', name='positionside', create_type=False), nullable=False),
             sa.Column('quantity', sa.Float(), nullable=False),
             sa.Column('entry_price', sa.Float(), nullable=False),
             sa.Column('current_price', sa.Float(), nullable=False),
@@ -72,7 +58,7 @@ def upgrade() -> None:
             sa.Column('unrealized_pnl', sa.Float(), nullable=True, server_default='0.0'),
             sa.Column('unrealized_pnl_pct', sa.Float(), nullable=True, server_default='0.0'),
             sa.Column('realized_pnl', sa.Float(), nullable=True),
-            sa.Column('status', position_status_column_enum, nullable=True, server_default='open'),
+            sa.Column('status', postgresql.ENUM('open', 'closed', name='positionstatus', create_type=False), nullable=True, server_default='open'),
             sa.Column('opened_at', sa.DateTime(timezone=True), nullable=True, server_default=sa.func.now()),
             sa.Column('closed_at', sa.DateTime(timezone=True), nullable=True),
             sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
