@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, Text, Boolean, DateTime, Enum, JSON, ForeignKey, func
+from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, func
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -19,9 +20,24 @@ class NotificationType(PyEnum):
 class Notification(Base):
     __tablename__ = "notifications"
     
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
-    type = Column(Enum(NotificationType), nullable=False, index=True)
+    type = Column(
+        postgresql.ENUM(
+            'price_alert',
+            'trend_alert',
+            'signal_alert',
+            'position_alert',
+            'margin_alert',
+            'disconnection_alert',
+            'error_alert',
+            'info',
+            name='notificationtype',
+            create_type=False,
+        ),
+        nullable=False,
+        index=True,
+    )
     title = Column(String(255), nullable=False)
     message = Column(Text, nullable=False)
     symbol = Column(String(20), nullable=True, index=True)

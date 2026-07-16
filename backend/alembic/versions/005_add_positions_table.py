@@ -86,7 +86,6 @@ def upgrade() -> None:
                 server_default='long',
             ),
         )
-        op.alter_column('positions', 'side', server_default=None)
 
     if 'status' not in existing_columns:
         op.add_column(
