@@ -65,6 +65,41 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint('id'),
         )
 
+    # The table may already exist but with an incomplete schema (e.g. from a
+    # previous deployment that failed partway through). Check for any
+    # missing columns and add them separately from table creation so this
+    # runs regardless of whether create_table() above ran.
+    if inspector.has_table('positions'):
+        existing_columns = {
+            column['name'] for column in inspector.get_columns('positions')
+        }
+
+        if 'side' not in existing_columns:
+            op.add_column(
+                'positions',
+                sa.Column(
+                    'side',
+                    postgresql.ENUM('long', 'short', name='positionside', create_type=False),
+                    nullable=False,
+                    server_default='long',
+                ),
+            )
+
+        if 'status' not in existing_columns:
+            op.add_column(
+                'positions',
+                sa.Column(
+                    'status',
+                    postgresql.ENUM('open', 'closed', name='positionstatus', create_type=False),
+                    nullable=True,
+                    server_default='open',
+                ),
+            )
+
+    # Refresh the inspector so index creation below sees any columns that
+    # were just added above.
+    inspector = sa.inspect(bind)
+
     existing_indexes = {
         index['name'] for index in inspector.get_indexes('positions')
     } if inspector.has_table('positions') else set()
