@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Enum, Integer
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
@@ -16,8 +17,8 @@ class PositionStatus(str, PyEnum):
 class Position(Base):
     __tablename__ = "positions"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     symbol = Column(String(20), nullable=False, index=True)
     side = Column(Enum(PositionSide), nullable=False)
     quantity = Column(Float, nullable=False)
