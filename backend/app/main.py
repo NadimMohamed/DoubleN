@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.api.v1.router import api_router
 from app.schemas.health import HealthResponse
 from app.db.session import engine, Base
+from app.db.startup import verify_schema_on_startup
 from app.middleware.rate_limit import init_rate_limiter, rate_limit_middleware
 
 log = structlog.get_logger(__name__)
@@ -30,6 +31,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     init_rate_limiter()
     await verify_rate_limiter()
+
+    # Verify schema before accepting traffic. Migrations run separately
+    # (see Dockerfile CMD: `alembic upgrade head`); this catches cases
+    # where migrations failed silently or the DB was reset without
+    # resetting `alembic_version`, so we fail fast instead of serving
+    # cascading 503s from every endpoint that touches the database.
+    await verify_schema_on_startup(engine)
 
     # NOTE: Binance stream workers are intentionally NOT started here.
     # Railway's hosting IPs are geo-blocked by Binance (HTTP 451), which
