@@ -85,6 +85,11 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint('id'),
         )
 
+    # Refresh the inspector now that the table has been created (or was
+    # already present) so the column checks below see the current schema
+    # rather than a stale snapshot taken before the table existed.
+    inspector = sa.inspect(bind)
+
     # Add the enum-typed columns separately. This sidesteps the
     # create_table()+inline-ENUM limitation described above.
     existing_columns = {
